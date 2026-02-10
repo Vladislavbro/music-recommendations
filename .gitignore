@@ -1,4 +1,14 @@
-*.log
+# Папки
 __pycache__/
 .DS_Store/
 .cursor/
+yandex_results/
+catboost_info/
+
+# Расширения файлов
+*.log
+*.DS_Store
+
+# Отдельные файлы
+catboost_test.py
+log_wrapper.py
