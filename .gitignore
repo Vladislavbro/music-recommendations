@@ -12,3 +12,5 @@ catboost_info/
 # Отдельные файлы
 catboost_test.py
 log_wrapper.py
+
+settings.json
