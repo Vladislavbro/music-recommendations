@@ -176,6 +176,50 @@ class PopularityNegativeSampler:
         return torch.from_numpy(flat).long().reshape(shape)
 
 
+class MixedNegativeSampler:
+    """Смешанный сэмплер: часть негативов из popularity, часть uniform.
+
+    Мотивация: чистая popularity-выборка даёт каталог-инвариантные «лёгкие»
+    негативы (топ поп-треки), что приводит к жанровому shortcut и нулевому
+    val NDCG. Подмешивая uniform-сэмплы из всего каталога (включая хвост),
+    мы даём модели fine-grained negatives — треки из того же кластера
+    вкуса, что и позитив. Без этого gSASRec на больших каталогах не учит
+    persona-level next-item.
+
+    `mix_uniform` ∈ [0, 1] — доля uniform; mix=0 эквивалент `PopularityNegativeSampler`,
+    mix=1 — чистый uniform.
+    """
+
+    def __init__(
+        self,
+        probs: np.ndarray,
+        n_items: int,
+        mix_uniform: float = 0.5,
+        seed: int = 0,
+    ) -> None:
+        assert 0.0 <= mix_uniform <= 1.0
+        self.probs = probs.astype(np.float64)
+        self.n_items = int(n_items)
+        self.mix_uniform = float(mix_uniform)
+        self.rng = np.random.default_rng(seed)
+
+    def sample(self, shape: tuple[int, ...]) -> torch.Tensor:
+        n = int(np.prod(shape))
+        n_uni = int(round(n * self.mix_uniform))
+        n_pop = n - n_uni
+        parts = []
+        if n_pop > 0:
+            parts.append(
+                self.rng.choice(self.probs.shape[0], size=n_pop, replace=True, p=self.probs)
+            )
+        if n_uni > 0:
+            # uniform по items 1..n_items (PAD_IDX=0 исключаем)
+            parts.append(self.rng.integers(1, self.n_items + 1, size=n_uni))
+        flat = np.concatenate(parts) if len(parts) > 1 else parts[0]
+        self.rng.shuffle(flat)
+        return torch.from_numpy(flat).long().reshape(shape)
+
+
 # ---------------------------------------------------------------------------
 # Validation NDCG@K
 # ---------------------------------------------------------------------------
@@ -250,8 +294,9 @@ class TrainConfig:
     n_heads: int = 4
     n_layers: int = 3
     dropout: float = 0.2
-    n_neg: int = 256
+    n_neg: int = 512
     gbce_t: float = 0.75
+    mix_uniform: float = 0.5  # доля uniform-негативов; 0 = pure popularity
     batch_size: int = 128
     eval_batch_size: int = 64
     lr: float = 1e-3
@@ -291,7 +336,9 @@ def train_gsasrec(
     }
 
     pop = compute_item_popularity(train_df, cfg.n_items, smoothing=cfg.pop_smoothing)
-    neg_sampler = PopularityNegativeSampler(pop, seed=cfg.seed)
+    neg_sampler = MixedNegativeSampler(
+        pop, n_items=cfg.n_items, mix_uniform=cfg.mix_uniform, seed=cfg.seed
+    )
 
     dataset = SeqTrainDataset(train_seqs, cfg.max_seq_len)
     collate = make_train_collate(cfg.max_seq_len)

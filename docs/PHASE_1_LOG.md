@@ -201,6 +201,7 @@
   - Popularity smoothing 0.75 — word2vec-style, отдельный параметр в `TrainConfig`.
   - `item_id_to_idx` сохраняем рядом с чекпоинтом (`artifacts/gsasrec/item_id_to_idx.pkl`) — без него inference в новом ноутбуке не сможет восстановить mapping. Phase 2 тоже его читает.
   - `_left_pad` помечен как private (`_left_pad`), но переиспользуется в `inference.py` — допустимо, оба модуля принадлежат scorer-пакету.
+- **Hotfix (после первого Colab-прогона на G4):** `epoch 0/1/2: train_loss быстро падает до 0.008, val_ndcg@10 ≈ 0.0003 ≈ random`. Диагноз — popularity shortcut: 256 negatives из `pop^0.75` всегда дают одни и те же топ-чарт треки → модель учит «жанр в истории = хорошо, попса = плохо», fine-grained next-item не выучивается. **Правка:** добавлен `MixedNegativeSampler` (popularity + uniform), дефолты `TrainConfig`: `n_neg=512, mix_uniform=0.5`. Smoke на CPU прошёл. Ноутбук 02 обновлён.
 - **TODO следующей сессии:**
   1. Прогнать `02_train_gsasrec.ipynb` на Colab A100 на полных данных, зафиксировать val NDCG@10 в этом логе.
   2. Прогнать `03_cache_user_scores.ipynb` поверх обученного чекпоинта.
