@@ -2,6 +2,7 @@
 __pycache__/
 .cursor/
 .vscode/
+.claude/
 yandex_results/
 catboost_info/
 artifacts/

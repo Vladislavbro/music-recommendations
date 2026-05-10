@@ -44,8 +44,8 @@
 | E | `notebooks/01_explore_yambda.ipynb` — интеграционный чек `src/data/*` + графики для текста ВКР (history length, item popularity Zipf, train/val/test по времени). EDA-числа НЕ дублируем — они уже в Step 0 | ✅ | `notebooks/01_explore_yambda.ipynb` прогнан; 4 PNG в `docs/figures/` |
 | F | `src/scorer/gsasrec.py` | ✅ | `src/scorer/gsasrec.py` (smoke прошёл) |
 | G | `src/scorer/gbce_loss.py` | ✅ | `src/scorer/gbce_loss.py` (smoke прошёл, t=0 ≡ BCE) |
-| H | `src/scorer/train.py` + `notebooks/02_train_gsasrec.ipynb` | ⬜ | `artifacts/gsasrec/` |
-| I | `src/scorer/inference.py` + `notebooks/03_cache_user_scores.ipynb` | ⬜ | `artifacts/user_scores_cache/scores.parquet` |
+| H | `src/scorer/train.py` + `notebooks/02_train_gsasrec.ipynb` | ✅ | `src/scorer/train.py`, `notebooks/02_train_gsasrec.ipynb` (smoke прошёл локально на CPU) |
+| I | `src/scorer/inference.py` + `notebooks/03_cache_user_scores.ipynb` | ✅ | `src/scorer/inference.py`, `notebooks/03_cache_user_scores.ipynb` (smoke прошёл локально) |
 | J | `src/data/group_synthesis.py` (заготовка для Phase 2) | ⬜ | — |
 
 ✅ — сделано, чекпоинт пройден  
@@ -177,6 +177,34 @@
   - Backward через модель (`m.score → gbce_loss → loss.backward()`): loss finite, **grad на `item_embeddings.weight[0]` (padding-row) = 0.0** — `padding_idx=0` корректно изолирует пад-эмбеддинг от обучения. Все 28 обучаемых параметров получают ненулевой grad.
 - **TODO следующей сессии:**
   1. Step H: `src/scorer/train.py` (батч-сэмплер на seq2seq targets + popularity-based негативы) + `notebooks/02_train_gsasrec.ipynb` для Colab.
+
+### 2026-05-10 — Steps H-I ✅ done (код + ноутбуки + smoke)
+- **Step H ✅** — `src/scorer/train.py` (~270 строк):
+  - `build_user_sequences(df, max_seq_len)`: dict[uid → np.ndarray], сортировка по timestamp asc, последние `max_seq_len+1` events. Юзеры с <2 events отбрасываются (нет seq2seq target).
+  - `compute_item_popularity(df, n_items, smoothing=0.75)`: word2vec-style сглаживание `count^0.75 / sum`, padding-row=0.
+  - `SeqTrainDataset` + `make_train_collate(max_seq_len)`: collate левым паддингом — `inputs = seq[:-1]`, `targets = seq[1:]`, оба `[B, L]`. Маска padding'а: `targets != PAD_IDX`.
+  - `PopularityNegativeSampler`: `np.random.default_rng().choice` (быстрее `torch.multinomial` для CPU+большой каталог). Коллизии с позитивом игнорируются — при каталоге 276k и n_neg=256 P(коллизии)<0.1%, на gBCE не влияет.
+  - Loss-flow: `hidden = model(inputs)` → `flat_h = hidden[mask]` → embed positives/negatives → `pos_logits = (flat_h * pos_emb).sum(-1)`, `neg_logits = einsum("nh,nkh->nk", flat_h, neg_emb)` → `gbce_loss(pos_logits, neg_logits, n_items, n_neg, t=0.75)`. Усреднение per-position (не per-user) — корректно для seq2seq.
+  - `evaluate_ndcg(...)`: full-catalog NDCG@K на val users, исключение всей train-истории из ранжирования. По умолчанию батч 64, `topk` на GPU, NDCG/IDCG в Python (B небольшое).
+  - `TrainConfig` дефолты: `max_seq_len=200, hidden_dim=256, n_heads=4, n_layers=3, dropout=0.2, n_neg=256, t=0.75, batch_size=128, lr=1e-3, n_epochs=30, early_stop=5`.
+  - `train_gsasrec(train_df, val_df, cfg)` пишет `artifacts/gsasrec/best.pt` (state + cfg + epoch + val_ndcg), `metrics.csv` (per-epoch loss/ndcg/время) и `config.json`. Early stopping по val NDCG@10.
+- **Step I ✅** — `src/scorer/inference.py` (~80 строк):
+  - `load_checkpoint(path)`: восстанавливает архитектуру из `cfg` внутри чекпоинта (без передачи параметров наружу).
+  - `cache_user_scores(model, sequences, max_seq_len, n_items, out_path, cfg)`: батчами строит `last = h[:, -1, :]`, скорит полным каталогом (`last @ item_emb.T`), исключает PAD_IDX и (опционально) train-историю, берёт `topk K`, пишет parquet `(uid, item_idx, score, rank)`.
+  - Дефолт `K=200` — запас для Phase 2 (агрегаторы режут по `|C_G|`); `exclude_history=True` стандарт next-item.
+- **Ноутбуки:**
+  - `notebooks/02_train_gsasrec.ipynb`: setup → канонический pipeline через `src.data.*` → `train_gsasrec(...)` с full-config (n_items, hidden=256, max_seq=200, ...) → загрузка чекпоинта + сохранение `item_id_to_idx.pkl` рядом → график train_loss/val_NDCG. Флаг `SMOKE` для подсэмпла 500 users на M4 Pro.
+  - `notebooks/03_cache_user_scores.ipynb`: тот же pipeline, читает сохранённый `item_id_to_idx.pkl` (гарантия совпадения индексов), прогоняет `cache_user_scores` с `K=200`, sanity-check на parquet.
+- **Smoke-тест ✅** на CPU (50 users / 200 items / 32 hidden / 2 epoch): training run прошёл (loss=0.677→0.664), val_ndcg@10=0.017 на random-данных (>0, sane), checkpoint сохранён, inference дал 50 users × K=10 строк в parquet, диапазон scores разумный. Этим подтверждены: формы тензоров, gbce-loss flow, early stopping, save/load, top-K через `torch.topk`, exclude_history.
+- **Решения:**
+  - Per-position loss (не per-user) — стандарт SASRec, лучше использует длинные последовательности.
+  - Popularity smoothing 0.75 — word2vec-style, отдельный параметр в `TrainConfig`.
+  - `item_id_to_idx` сохраняем рядом с чекпоинтом (`artifacts/gsasrec/item_id_to_idx.pkl`) — без него inference в новом ноутбуке не сможет восстановить mapping. Phase 2 тоже его читает.
+  - `_left_pad` помечен как private (`_left_pad`), но переиспользуется в `inference.py` — допустимо, оба модуля принадлежат scorer-пакету.
+- **TODO следующей сессии:**
+  1. Прогнать `02_train_gsasrec.ipynb` на Colab A100 на полных данных, зафиксировать val NDCG@10 в этом логе.
+  2. Прогнать `03_cache_user_scores.ipynb` поверх обученного чекпоинта.
+  3. Step J: `src/data/group_synthesis.py` — заготовка под Phase 2 (random groups).
 
 ### 2026-05-10 — Step 0 ✅ done (прогон + решения)
 - Пользователь прогнал `00_data_discovery.ipynb` локально, прислал summary. Числа перенесены в раздел «Data discovery findings» выше.
