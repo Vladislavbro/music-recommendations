@@ -41,7 +41,7 @@
 | B | `src/utils/{seed,caching}.py` | ✅ | `src/utils/seed.py`, `src/utils/caching.py` |
 | C | `src/data/yambda_loader.py` (без audio) | ✅ | `src/data/yambda_loader.py`; cardinality на real-data сходится со Step 0 |
 | D | `src/data/splits.py` (GTS на pandas) | ✅ | `src/data/splits.py`; инварианты держатся, числа сходятся со Step 0 |
-| E | `notebooks/01_explore_yambda.ipynb` — интеграционный чек `src/data/*` + графики для текста ВКР (history length, item popularity Zipf, train/val/test по времени). EDA-числа НЕ дублируем — они уже в Step 0 | ⬜ | — |
+| E | `notebooks/01_explore_yambda.ipynb` — интеграционный чек `src/data/*` + графики для текста ВКР (history length, item popularity Zipf, train/val/test по времени). EDA-числа НЕ дублируем — они уже в Step 0 | ✅ | `notebooks/01_explore_yambda.ipynb` прогнан; 4 PNG в `docs/figures/` |
 | F | `src/scorer/gsasrec.py` | ⬜ | — |
 | G | `src/scorer/gbce_loss.py` | ⬜ | — |
 | H | `src/scorer/train.py` + `notebooks/02_train_gsasrec.ipynb` | ⬜ | `artifacts/gsasrec/` |
@@ -70,6 +70,7 @@
   - n_users: **9,209**
   - n_items (unique tracks): **631,003**
 - **Per-user history length** (post-filter): median = **1798**, 95p = **11,198**, 99p = **17,296**, max = 26,959 → `max_seq_len = 200` (recent-200, покрытие ~11% медианы)
+  - Уточнённая медиана **post-`min_pop≥5`** (Step E): **1758** — фильтр популярности срезает ~2.1% events и 14 user'ов с историей только на редких треках, медиана сдвигается на ~40 listens. На выбор `max_seq_len` не влияет.
 - **Timestamp range:** [0, 25,999,995] → совпадает с `Constants.TEST_TIMESTAMP = 26000000 - 86400 = 25,913,600`, последние ~5 дней попадают в тест
 - **GTS sanity** (val_size=86400, gap=1800):
   - users в train: 9,207
@@ -135,6 +136,27 @@
 - **TODO следующей сессии:**
   1. Step E: `notebooks/01_explore_yambda.ipynb` — sanity-чек loaders + 3-4 графика для ВКР.
   2. Step F: `src/scorer/gsasrec.py` — архитектура с левым паддингом.
+
+### 2026-05-10 — Step E ✅ done (notebook прогнан, графики проверены)
+- Создан `notebooks/01_explore_yambda.ipynb` (22 ячейки). Структура:
+  1. Setup: `sys.path.insert(0, PROJECT_ROOT)`, создание `docs/figures/`.
+  2. Pipeline через `src.data.*` в каноническом порядке (load → filter_listens → filter_min_popularity → build_item_id_to_idx → apply_item_remap → global_temporal_split). После каждого шага — сравнение с числами Step 0 через `assert` (29,439,278 events / 9,209 users / 631,003 items).
+  3. GTS split + проверка инвариантов (`val.uid ⊆ train.uid`, дизъюнктность по времени).
+  4. Три графика для ВКР, сохраняются в `docs/figures/` (200dpi PNG):
+     - `history_length_hist.png` — log-y, с линиями `max_seq_len=200` и `median=1798`.
+     - `item_popularity_zipf.png` — log-log, before/after `min_pop≥5`.
+     - `gts_timeline.png` — events per day, с границами GTS.
+     - `gts_timeline_zoom.png` (опционально) — zoom на последние 10 дней.
+- Imports проверены локально (`python3 -c "from src.data.* import ..."` — OK). Ноутбук прогнан пользователем, все 4 графика сохранены в `docs/figures/`.
+- Решение: ноутбук НЕ дублирует Step 0 — числа берутся из Step 0, ноутбук только ставит `assert` поверх loader'а.
+- **Проверка графиков (визуальный анализ):**
+  - `history_length_hist.png` — корректно. **Находка:** post-min_pop median = **1758** (vs 1798 post-filter-only). Различие ~40 listens объясняется потерей 2.1% events после `min_pop≥5`. Зафиксировано в разделе «Data discovery findings» как уточнение.
+  - `item_popularity_zipf.png` — синяя/оранжевая кривые совпадают на rank<200k, расходятся ровно на `min_pop=5` пунктире. Визуально подтверждает: фильтр срезает только хвост (276k items vs 631k), голову не трогает.
+  - `gts_timeline.png` — растущий ~300-дневный train с недельной модуляцией (выходные/будни). Val/test невидимы из-за aspect ratio (1 день vs 300). **Решение:** в текст ВКР пускаем `gts_timeline_zoom.png` как основной, `gts_timeline.png` — в приложение или убираем.
+  - `gts_timeline_zoom.png` — лучший график: чёткий суточный паттерн, val/test совпадают по форме с train (нет distribution shift), 30-min gaps не разрешаются на 1-час корзинах (нормально).
+- **Артефакты Step E:** 4 PNG в `docs/figures/` (всего ~280 KB), `notebooks/01_explore_yambda.ipynb` (22 ячейки).
+- **TODO следующей сессии:**
+  1. Step F: `src/scorer/gsasrec.py` — SASRec-архитектура с левым паддингом, `forward([B,L]) → [B,L,H]`, `score(seq, candidates) → [B,K]`. Адаптация из `references/yambda/benchmarks/models/sasrec/model.py` под наш интерфейс.
 
 ### 2026-05-10 — Step 0 ✅ done (прогон + решения)
 - Пользователь прогнал `00_data_discovery.ipynb` локально, прислал summary. Числа перенесены в раздел «Data discovery findings» выше.
