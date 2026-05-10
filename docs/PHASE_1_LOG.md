@@ -38,10 +38,10 @@
 |---|---|---|---|
 | 0 | Data Discovery (`00_data_discovery.ipynb`) | ✅ | `notebooks/00_data_discovery.ipynb` прогнан, числа в разделе «Data discovery findings» |
 | A | mv references + scaffold + requirements + .gitignore | ✅ | `src/{data,scorer,utils}/`, `artifacts/`, `references/{yambda,gSASRec-pytorch}/`, `requirements.txt`, обновлён `.gitignore` |
-| B | `src/utils/{seed,caching}.py` | ⬜ | — |
-| C | `src/data/yambda_loader.py` (без audio) | ⬜ | — |
-| D | `src/data/splits.py` (GTS на pandas) | ⬜ | — |
-| E | `notebooks/01_explore_yambda.ipynb` | ⬜ | — |
+| B | `src/utils/{seed,caching}.py` | ✅ | `src/utils/seed.py`, `src/utils/caching.py` |
+| C | `src/data/yambda_loader.py` (без audio) | ✅ | `src/data/yambda_loader.py`; cardinality на real-data сходится со Step 0 |
+| D | `src/data/splits.py` (GTS на pandas) | ✅ | `src/data/splits.py`; инварианты держатся, числа сходятся со Step 0 |
+| E | `notebooks/01_explore_yambda.ipynb` — интеграционный чек `src/data/*` + графики для текста ВКР (history length, item popularity Zipf, train/val/test по времени). EDA-числа НЕ дублируем — они уже в Step 0 | ⬜ | — |
 | F | `src/scorer/gsasrec.py` | ⬜ | — |
 | G | `src/scorer/gbce_loss.py` | ⬜ | — |
 | H | `src/scorer/train.py` + `notebooks/02_train_gsasrec.ipynb` | ⬜ | `artifacts/gsasrec/` |
@@ -120,6 +120,21 @@
 - `.gitignore` обновлён: добавлены `artifacts/`, `references/`, `.ipynb_checkpoints/`, `.hf_cache/`, `*.pt`, `*.parquet`. Убрано `docs/` (PHASE_1_LOG.md теперь поедет в репо вместе с кодом — нужно для Colab). `CLAUDE.md` остаётся в `.gitignore` по решению пользователя (пока не публикуем).
 - Чекпоинт пройден: `python3 -c "import src; import src.data; import src.scorer; import src.utils"` отрабатывает.
 - **TODO следующей сессии:** Step B — `src/utils/seed.py` (`set_seed(int)`, фиксирует random/np/torch/cudnn) + `src/utils/caching.py` (round-trip pickle для dict, save/load_parquet для DataFrame).
+
+### 2026-05-10 — Steps B-D (код готов, ждёт HF-прогона)
+- **Step B ✅** — `src/utils/seed.py` (`set_seed(seed, deterministic_torch=True)`: PYTHONHASHSEED + random + numpy + torch/cudnn, torch import опционален), `src/utils/caching.py` (`save_pickle/load_pickle`, `save_parquet/load_parquet` с auto-mkdir родительской директории). Sanity round-trip пройден локально.
+- **Step C 🟨** — `src/data/yambda_loader.py`: `load_yambda("50m", cache_dir=...)`, `filter_listens(df, threshold_pct=50)`, `filter_min_popularity(df, min_count=5)`, `build_item_id_to_idx`, `apply_item_remap`, `subsample_users`. Логика проверена на синтетическом DataFrame; полная валидация cardinality (29.4M строк после фильтра, 9209 users) ждёт прогона на M4 Pro с HF-кэшем.
+- **Step D 🟨** — `src/data/splits.py`: pandas-порт `flat_split_train_val_test` с `SplitConfig(test_timestamp=25_913_600, val_size=86_400, gap_size=1_800, drop_non_train_items=False)`. Инварианты `set(val.uid) ⊆ set(train.uid)`, дизъюнктность сегментов, путь `val_size=0` — все проходят на синтетике. Полный чекпоинт (4628 users в val) — на реальных данных.
+- **Step E переформулирован** в таблице прогресса: ноутбук становится интеграционным тестом `src/data/*` + источник графиков для текста ВКР (history length, item popularity Zipf, train/val/test по времени). EDA-числа НЕ дублируем со Step 0.
+- **Решение:** убрал sequential-порт `timesplit.py` в пользу flat-семантики — наша таблица flat (one-row-per-event), не лист-on-list. Семантика идентична: `train < t1`, `val ∈ [t1, t2)`, `test ≥ t2`, val/test ограничены train-users.
+- **Real-data validation (выполнена в этой же сессии):** прогнал на M4 Pro локально (HF-кэш горячий, total 10.5s).
+  - `filter_listens`: 29,439,278 events / 9,209 users / 631,003 items — **точно совпадает** со Step 0.
+  - `filter_min_popularity(≥5)`: items 631,003 → 276,305 (-56%), events -2.1%, теряется 14 users у которых вся история на редких треках.
+  - `global_temporal_split`: train 9,194 / val 4,596 / test 4,576 users (расхождение со Step 0 на ±15-30 users — потому что Step 0 считал без min-pop, ожидаемо). Инварианты val.uid⊆train.uid и test.uid⊆train.uid OK.
+  - **Решение зафиксировать:** `filter_min_popularity` применяем ДО сплита (а не после). Иначе train может содержать редкие треки, отсутствующие в val/test после remap. Порядок: load → filter_listens → filter_min_popularity → build_item_id_to_idx → global_temporal_split.
+- **TODO следующей сессии:**
+  1. Step E: `notebooks/01_explore_yambda.ipynb` — sanity-чек loaders + 3-4 графика для ВКР.
+  2. Step F: `src/scorer/gsasrec.py` — архитектура с левым паддингом.
 
 ### 2026-05-10 — Step 0 ✅ done (прогон + решения)
 - Пользователь прогнал `00_data_discovery.ipynb` локально, прислал summary. Числа перенесены в раздел «Data discovery findings» выше.
