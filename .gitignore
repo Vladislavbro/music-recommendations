@@ -1,16 +1,23 @@
 # Папки
 __pycache__/
-.DS_Store/
 .cursor/
+.vscode/
 yandex_results/
 catboost_info/
+artifacts/
+references/
+.ipynb_checkpoints/
+.hf_cache/
 
 # Расширения файлов
 *.log
-*.DS_Store
+*.pt
+*.parquet
 
 # Отдельные файлы
 catboost_test.py
 log_wrapper.py
+.DS_Store
+CLAUDE.md
 
 settings.json

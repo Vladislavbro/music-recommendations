@@ -1,0 +1,133 @@
+# Phase 1 — журнал работы
+
+> Этот документ — **главный источник истины по ходу Phase 1**. Каждая сессия начинается с его прочтения и заканчивается обновлением. Полный план: `~/.claude/plans/zany-questing-wadler.md`. Высокоуровневая дорожная карта проекта: `CLAUDE.md`.
+
+## Как работать с этим логом в новых чатах
+
+В новом чате говоришь: «Продолжаем Phase 1, читай `CLAUDE.md` и `docs/PHASE_1_LOG.md`, выполни следующий незавершённый шаг». Я подхватываю состояние без re-read истории чата.
+
+В конце сессии я **обновляю** этот файл: помечаю шаги ✅, добавляю принятые решения с обоснованием, фиксирую открытые вопросы и числа из data discovery.
+
+## Цель Phase 1
+
+Каркас репозитория + рабочий per-user скорер gSASRec на YAMBDA-50m + кэш персональных топ-K скоров. Без агрегаторов, без аудио, без групп. После завершения у нас на диске лежит чекпоинт модели и parquet со скорами для дальнейшего использования в Phase 2.
+
+## Зафиксированные решения
+
+| Решение | Обоснование |
+|---|---|
+| Только flavor `50m` | Согласовано с пользователем; полный 5b на Colab не уместится |
+| `t = 0.75` в gBCE | Рекомендация Petrov & Macdonald 2023 для больших каталогов |
+| Pandas-only data infra, без Polars | Свой контроль, не тянем зависимости от yambda; согласовано |
+| Не импортируем код из `references/`, переписываем нужные куски в `src/` | Защита от изменений в апстриме; явная адаптация под наш интерфейс |
+| `git mv yambda → references/yambda`, `git mv gSASRec-pytorch → references/gSASRec-pytorch` | Согласовано; реализуется в Step A |
+| Фильтр событий для скорера: `event_type == 'listen' AND played_ratio_pct >= 50` | Стандарт yambda Constants.TRACK_LISTEN_THRESHOLD; implicit-сигнал, много данных |
+| Аудио (14GB embeddings.parquet) **в Phase 1 не трогаем** | Скорер работает только на ID-эмбеддингах; subset делается в начале Phase 2 на Colab |
+| Левое паддинг в `GSASRec`, прямая нумерация позиций (newest на L-1) | Проще `score()` — берём `hidden[:, -1, :]` без gather |
+| Распределение размеров групп `{2:0.3, 3:0.4, 4:0.2, 5:0.1}` (для Phase 2) | Стандарт из AGREE/GroupIM |
+| Журнал фазы (этот файл) обновляется в конце каждой сессии | Чтобы новые чаты подхватывали контекст без re-read истории |
+| **`max_seq_len = 200`** (зафиксировано после Step 0) | Согласовано с пользователем; матчится с SASRec/gSASRec бенчмарками. Покрывает ~11% медианной истории YAMBDA, но recent-200 достаточно signal'а для скорера |
+| **`hidden_dim = 256`, `n_heads = 4`, `n_layers = 3`** | По плану; стандарт gSASRec/yambda. Для каталога 631k items 128 теряет качество |
+| **Min-popularity filter на items: `≥5 listens`** (после Step 0) | Согласовано; срежет хвост редких треков, обычно теряем 30-50% items без потери NDCG. Уменьшит embedding table |
+| **`VAL_SIZE = 86400` (1 день) оставляем** | Step 0 показал 4,628 users в val — порог >1000 пройден, расширять не нужно |
+| **`d_a = 128`** (audio embed dim, YAMBDA) | Получено через `HfFileSystem` range-read footer'а `embeddings.parquet`, без скачивания 14 ГБ |
+
+## Прогресс по шагам
+
+| Шаг | Описание | Статус | Артефакты |
+|---|---|---|---|
+| 0 | Data Discovery (`00_data_discovery.ipynb`) | ✅ | `notebooks/00_data_discovery.ipynb` прогнан, числа в разделе «Data discovery findings» |
+| A | mv references + scaffold + requirements + .gitignore | ✅ | `src/{data,scorer,utils}/`, `artifacts/`, `references/{yambda,gSASRec-pytorch}/`, `requirements.txt`, обновлён `.gitignore` |
+| B | `src/utils/{seed,caching}.py` | ⬜ | — |
+| C | `src/data/yambda_loader.py` (без audio) | ⬜ | — |
+| D | `src/data/splits.py` (GTS на pandas) | ⬜ | — |
+| E | `notebooks/01_explore_yambda.ipynb` | ⬜ | — |
+| F | `src/scorer/gsasrec.py` | ⬜ | — |
+| G | `src/scorer/gbce_loss.py` | ⬜ | — |
+| H | `src/scorer/train.py` + `notebooks/02_train_gsasrec.ipynb` | ⬜ | `artifacts/gsasrec/` |
+| I | `src/scorer/inference.py` + `notebooks/03_cache_user_scores.ipynb` | ⬜ | `artifacts/user_scores_cache/scores.parquet` |
+| J | `src/data/group_synthesis.py` (заготовка для Phase 2) | ⬜ | — |
+
+✅ — сделано, чекпоинт пройден  
+🟨 — в процессе  
+⬜ — не начато
+
+## Data discovery findings
+
+> Заполнено по итогам Step 0 (прогон `notebooks/00_data_discovery.ipynb` локально на M4 Pro, 2026-05-10).
+
+- **Total events (50m, post-load):** 47,790,449
+- **Event_type breakdown:**
+  - listen: 46,467,212 (97.23%)
+  - like: 881,456 (1.84%)
+  - unlike: 312,972 (0.65%)
+  - dislike: 107,776 (0.23%)
+  - undislike: 21,033 (0.04%)
+  - *Note:* `multi_event` отсутствует в `flat-multievent-50m` (есть только в `multi-event` flavor'ах)
+- **Distribution of `played_ratio_pct`** (listen events): median = 100.0, 90p = 100.0 — почти все listen полные
+- **После фильтра `listen & played_ratio_pct >= 50`:**
+  - n_events: **29,439,278** (61.6% от всех listens проходят фильтр)
+  - n_users: **9,209**
+  - n_items (unique tracks): **631,003**
+- **Per-user history length** (post-filter): median = **1798**, 95p = **11,198**, 99p = **17,296**, max = 26,959 → `max_seq_len = 200` (recent-200, покрытие ~11% медианы)
+- **Timestamp range:** [0, 25,999,995] → совпадает с `Constants.TEST_TIMESTAMP = 26000000 - 86400 = 25,913,600`, последние ~5 дней попадают в тест
+- **GTS sanity** (val_size=86400, gap=1800):
+  - users в train: 9,207
+  - users в val: **4,628** ✅ (>1000, расширять `VAL_SIZE` не надо)
+  - users в test: 4,600
+- **Audio embed dim (`d_a`):** **128** (получено через `HfFileSystem` range-read schema footer'а `embeddings.parquet`, без скачивания 14 ГБ)
+- **Estimated audio subset size:** 631,003 × 128 × float32 = ~**323 MB** (помещается в RAM целиком; в Phase 2 не нужен streaming)
+
+### Ключевые наблюдения
+
+1. **YAMBDA flavor naming = events count, not users.** `50m` ≈ 50M событий ≈ 9-10k users. Для перехода к большему числу users нужен `500m` (~100k) или `5b` (~1M). На Phase 1 9k users — потолок, для синтеза групп по 2-5 хватит десятков тысяч уникальных групп.
+2. **Очень длинные истории.** Медиана 1798 listens/user — это музыкальный стриминг с короткими треками, не MovieLens. `max_seq_len = 200` отсекает агрессивно, но это совпадает со стандартом SASRec/gSASRec — в Phase 2 при необходимости можно сравнить с 500.
+3. **n_items = 631k без фильтра по популярности.** Будем применять min-popularity filter `≥5 listens` в Step C, что должно уменьшить таблицу embedding'ов ощутимо (точное число — после применения фильтра в `yambda_loader.py`).
+
+## Открытые вопросы (для Phase 2)
+
+- **Ground truth для групп** в eval: union по listens / intersection / только likes? Решить после анализа размеров пересечений на discovery-стадии.
+- **Стратегия audio subset**: `pyarrow.dataset` через `HfFileSystem` (range-read) vs полная загрузка в Colab vs предварительный subset на личном HF-репо. Решить в начале Phase 2.
+- **Тип групп** (random / homogeneous / heterogeneous): первая итерация — только random.
+
+## Риски и mitigation
+
+См. раздел "Risks" в `~/.claude/plans/zany-questing-wadler.md`. Главные:
+- groupby по 30M строк → фолбэк `sort_values + np.diff`
+- val может оказаться пустым на 50m + 1-day val → расширить до 2 дней
+- gBCE float64 — **не оптимизировать**
+
+## История сессий
+
+> Каждая сессия добавляет запись в конце. Формат: дата, что сделано, ключевые решения, что осталось.
+
+### 2026-05-10 — Планирование
+- Сформирован план Phase 1 в `~/.claude/plans/zany-questing-wadler.md`.
+- Решено добавить **Step 0 (Data Discovery)** до написания кода — чтобы реальные числа из YAMBDA-50m информировали выбор `max_seq_len`, GTS `val_size`, candidate pool.
+- Решено отложить аудио на Phase 2 (файл 14GB, в Phase 1 не нужен).
+- Создан этот журнал. Выполнение плана **не начато** — стартует с нового чата.
+
+### 2026-05-10 — Step 0 (notebook scaffolded)
+- Создана директория `notebooks/`.
+- Создан `notebooks/00_data_discovery.ipynb` — все ячейки готовы, прогон ручной (по согласованию с пользователем).
+- Структура ноутбука: load 50m → event_type breakdown → played_ratio_pct distribution → filter listens (≥50%) → per-user history length (median/95p/99p) → timestamp + GTS sanity → audio dim через `HfFileSystem` range-read (без скачивания 14GB) → estimated audio subset → summary cell для копирования в этот лог.
+- Решение по audio dim (Step 0): пробуем range-read через `HfFileSystem` + `pyarrow.ParquetFile`. Если падает (timeouts / unsupported) — `d_a = TBD` до Phase 2, как и зафиксировано в плане.
+
+### 2026-05-10 — Step A ✅ done (scaffold)
+- `yambda/` и `gSASRec-pytorch/` оказались nested git-клонами (со своими `.git`), не submodules — переехали обычным `mv` в `references/`. Поэтому шаг переименован «git mv → mv» в таблице прогресса.
+- Создан scaffold: `src/{data,scorer,utils}/__init__.py`, пустой `artifacts/`. `notebooks/` и `docs/` уже существовали с предыдущих шагов.
+- `requirements.txt` создан по списку из плана.
+- `.gitignore` обновлён: добавлены `artifacts/`, `references/`, `.ipynb_checkpoints/`, `.hf_cache/`, `*.pt`, `*.parquet`. Убрано `docs/` (PHASE_1_LOG.md теперь поедет в репо вместе с кодом — нужно для Colab). `CLAUDE.md` остаётся в `.gitignore` по решению пользователя (пока не публикуем).
+- Чекпоинт пройден: `python3 -c "import src; import src.data; import src.scorer; import src.utils"` отрабатывает.
+- **TODO следующей сессии:** Step B — `src/utils/seed.py` (`set_seed(int)`, фиксирует random/np/torch/cudnn) + `src/utils/caching.py` (round-trip pickle для dict, save/load_parquet для DataFrame).
+
+### 2026-05-10 — Step 0 ✅ done (прогон + решения)
+- Пользователь прогнал `00_data_discovery.ipynb` локально, прислал summary. Числа перенесены в раздел «Data discovery findings» выше.
+- **Решения, принятые на основе чисел:**
+  - `max_seq_len = 200` — несмотря на медиану истории 1798, остаёмся на стандарте SASRec/gSASRec. Recent-200 достаточно signal'а; в Phase 2 при необходимости сравним с 500.
+  - `hidden_dim = 256, n_heads = 4, n_layers = 3` — по плану, не меняем. На каталоге 631k items 128 теряет качество.
+  - **Min-popularity filter на items: `≥5 listens`** — добавляется в `src/data/yambda_loader.py` в Step C. Уменьшит embedding table.
+  - `VAL_SIZE = 86400` (1 день) оставляем — 4,628 users в val, расширять не нужно.
+  - Audio range-read через `HfFileSystem` сработал → `d_a = 128`. Subset для 631k items ≈ 323 MB (помещается в RAM целиком). В Phase 2 audio loader использует `pyarrow.dataset` или per-row-group чтение с `isin`-фильтром по `item_id`.
+- **Важное наблюдение:** YAMBDA flavor `50m` означает 50M событий ≈ 9-10k users (а не 50M users). Это потолок Phase 1. Если в Phase 2 нужно больше users — будет переход на `500m` (~100k users).
+- **TODO следующей сессии:** Step A — `git mv yambda → references/yambda`, `git mv gSASRec-pytorch → references/gSASRec-pytorch`, scaffold `src/{data,scorer,utils}/`, `requirements.txt`, обновление `.gitignore`. Артефакт чекпоинта: `python -c "import src"` работает.
