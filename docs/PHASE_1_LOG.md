@@ -42,8 +42,8 @@
 | C | `src/data/yambda_loader.py` (без audio) | ✅ | `src/data/yambda_loader.py`; cardinality на real-data сходится со Step 0 |
 | D | `src/data/splits.py` (GTS на pandas) | ✅ | `src/data/splits.py`; инварианты держатся, числа сходятся со Step 0 |
 | E | `notebooks/01_explore_yambda.ipynb` — интеграционный чек `src/data/*` + графики для текста ВКР (history length, item popularity Zipf, train/val/test по времени). EDA-числа НЕ дублируем — они уже в Step 0 | ✅ | `notebooks/01_explore_yambda.ipynb` прогнан; 4 PNG в `docs/figures/` |
-| F | `src/scorer/gsasrec.py` | ⬜ | — |
-| G | `src/scorer/gbce_loss.py` | ⬜ | — |
+| F | `src/scorer/gsasrec.py` | ✅ | `src/scorer/gsasrec.py` (smoke прошёл) |
+| G | `src/scorer/gbce_loss.py` | ✅ | `src/scorer/gbce_loss.py` (smoke прошёл, t=0 ≡ BCE) |
 | H | `src/scorer/train.py` + `notebooks/02_train_gsasrec.ipynb` | ⬜ | `artifacts/gsasrec/` |
 | I | `src/scorer/inference.py` + `notebooks/03_cache_user_scores.ipynb` | ⬜ | `artifacts/user_scores_cache/scores.parquet` |
 | J | `src/data/group_synthesis.py` (заготовка для Phase 2) | ⬜ | — |
@@ -157,6 +157,26 @@
 - **Артефакты Step E:** 4 PNG в `docs/figures/` (всего ~280 KB), `notebooks/01_explore_yambda.ipynb` (22 ячейки).
 - **TODO следующей сессии:**
   1. Step F: `src/scorer/gsasrec.py` — SASRec-архитектура с левым паддингом, `forward([B,L]) → [B,L,H]`, `score(seq, candidates) → [B,K]`. Адаптация из `references/yambda/benchmarks/models/sasrec/model.py` под наш интерфейс.
+
+### 2026-05-10 — Steps F-G (код готов, ждёт smoke-теста)
+- **Step F 🟨** — `src/scorer/gsasrec.py`. Архитектура близка к yambda SASRec, но проще:
+  - **Left padding, прямые позиции 0..L-1** (newest на L-1) — `score()` берёт `hidden[:, -1, :]` без gather по длинам, что снимает целый класс багов с offsets/cumsum.
+  - `nn.Embedding(n_items+1, H, padding_idx=0)` — padding-idx занулён инициализацией и не обучается (PyTorch это гарантирует).
+  - `nn.TransformerEncoder` (`batch_first=True`) с causal mask `triu(diag=1)` и `src_key_padding_mask = (seq == 0)`. Guard на полностью-пустые строки (kpm=False), чтобы избежать NaN в attention — на реальных батчах не сработает, но защищает unit-тесты.
+  - Init: trunc_normal(std=0.02) для weights, ones для norm, zeros для bias — как в yambda.
+  - Loss НЕ внутри модели (в отличие от yambda), считается снаружи через `gbce_loss` — модель используется и в train, и в `inference.py`.
+- **Step G 🟨** — `src/scorer/gbce_loss.py`. Прямой порт строк 59-72 из `references/gSASRec-pytorch/train_gsasrec.py`, обёрнутый в функцию по сигнатуре из CLAUDE.md.
+  - Сигнатура `gbce_loss(pos_logits, neg_logits, n_items, n_neg, t=0.75)`. Поддерживает broadcast: pos `[B]` / neg `[B, n_neg]` (per-step), и pos `[B, L]` / neg `[B, L, n_neg]` (seq2seq) — `pos.unsqueeze(-1)` приводит формы к `[..., 1]` и `[..., n_neg]`.
+  - Float64 для трансформации позитивного логита (clamp с eps), затем concat и `F.binary_cross_entropy_with_logits(reduction="mean")`. Возврат — в исходном dtype pos.
+  - **НЕ оптимизировать float64 → float32** (зафиксировано в Risks): теряется численная стабильность при больших каталогах (n_items ~6e5).
+- **Smoke-тест ✅ прошёл** на `torch 2.x` (anaconda dev env):
+  - `forward [B=8, L=50] → [8, 50, 64]`, все finite. Left-pad на row 0 (10 паддингов) обработан без NaN.
+  - `score(seq, cand[8,16]) → [8, 16]`, finite.
+  - `gbce_loss` на flat (`pos[B], neg[B,32]`) и seq2seq (`pos[B,L], neg[B,L,32]`) формах — finite.
+  - `gbce(t=0) = 0.745660` точно совпадает с `F.binary_cross_entropy_with_logits` на тех же логитах — подтверждает, что при `t=0` восстанавливается обычный BCE (как заявлено Petrov & Macdonald).
+  - Backward через модель (`m.score → gbce_loss → loss.backward()`): loss finite, **grad на `item_embeddings.weight[0]` (padding-row) = 0.0** — `padding_idx=0` корректно изолирует пад-эмбеддинг от обучения. Все 28 обучаемых параметров получают ненулевой grad.
+- **TODO следующей сессии:**
+  1. Step H: `src/scorer/train.py` (батч-сэмплер на seq2seq targets + popularity-based негативы) + `notebooks/02_train_gsasrec.ipynb` для Colab.
 
 ### 2026-05-10 — Step 0 ✅ done (прогон + решения)
 - Пользователь прогнал `00_data_discovery.ipynb` локально, прислал summary. Числа перенесены в раздел «Data discovery findings» выше.
