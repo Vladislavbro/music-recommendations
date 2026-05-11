@@ -51,7 +51,7 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 | Шаг | Описание | Артефакт | Статус |
 |---|---|---|---|
 | 1 | Sanity-чек кэша скоров + фикс архитектурного бага с pad | патч `gsasrec.py` + чистый кэш | ✅ |
-| 2 | Subset аудиоэмбеддингов 276k items → `artifacts/audio/embeddings.npy` | numpy + item_id index | 🟡 код готов, ждёт запуска на Colab |
+| 2 | Subset аудиоэмбеддингов 276k items → `artifacts/audio/embeddings.npy` | numpy + item_id index + `audio_valid` mask | ✅ |
 | 3 | `src/data/group_synthesis.py` — random-группы, размер 2–5 | модуль + smoke | ⬜ |
 | 4 | Аудиопрофиль пользователя $\bar{a}_u$ (mean по истории listen+) | `artifacts/audio/user_profiles.npy` | ⬜ |
 | 5 | `src/eval/metrics.py` (NDCG@K) + `src/eval/group_eval.py` | модули + unit-тест на toy-данных | ⬜ |
@@ -113,16 +113,38 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 
 **Открытое:** возможно поднять K до 500 для popularity-negatives — решу на шаге 6.
 
-### 2026-05-11 — Шаг 2: subset аудиоэмбеддингов 🟡 код готов
+### 2026-05-11 — Шаг 2: subset аудиоэмбеддингов ✅
 
-**Подход.** Качаем `embeddings.parquet` (14 GB, 7.72M × 128) целиком через `hf_hub_download` на Colab-диск, читаем две колонки в `pyarrow.Table`, фильтруем `np.isin(item_id, target_ids)` по 276,305 items из Phase 1, сохраняем `[n_items+1, 128]` float32 (~135 MB), row 0 — PAD. Локально файл не оседает — результат скачиваем после Colab-прогона.
+**Подход.** Качаем `embeddings.parquet` (14 GB, 7.72M × 128) целиком через `hf_hub_download` на Colab-диск, читаем две колонки в `pyarrow.Table`, фильтруем `np.isin(item_id, target_ids)` по 276,305 items из Phase 1, сохраняем `[n_items+1, 128]` float32 (~135 MB), row 0 — PAD. Локально файл не оседает — результат скачали после Colab-прогона.
 
 **Артефакты:**
 - [src/data/audio_embeddings.py](src/data/audio_embeddings.py) — `extract_audio_subset(item_id_to_idx, output_path, use_normalized=False)`.
-- [notebooks/04_audio_subset.ipynb](notebooks/04_audio_subset.ipynb) — 4 ячейки: bootstrap → загрузка `item_id_to_idx` → вызов функции → sanity-check.
+- [notebooks/04_audio_subset.ipynb](notebooks/04_audio_subset.ipynb) — 4 ячейки: bootstrap → загрузка `item_id_to_idx` → вызов функции → sanity-check (+ доп. ячейка с popularity-анализом missing).
 
 **Probe схемы parquet:** `num_row_groups=30`, `num_rows=7,721,749`. Колонки: `item_id uint32`, `embed large_list<double>`, `normalized_embed large_list<double>` (dim 128). Берём `embed`, нормированный вариант — флагом при необходимости.
 
-**Не запущено.** Ждём Colab-сессию.
+**Запуск на Colab (CPU runtime, 50 GB RAM):** выполнен, всё прошло успешно. Также отдельно прогнан popularity-анализ missing items (`load_yambda` + `filter_listens` + `value_counts` — ~5–10 мин на CPU, узкое место — `to_pandas()` на 46M строк, GPU тут не помогает).
 
-**Открытое.** Если `seen`-чек покажет пропуски — значит, в Phase 1 после `min_pop≥5` остались id, которых нет в каталоге эмбеддингов; обработаем при первом запуске.
+**Результат `artifacts/audio/embeddings.npy`:** shape `(276306, 128)`, dtype float32, 134.9 MB. PAD-row (idx=0) нулевой, NaN/Inf нет. Норма (non-zero): mean=28.45, range [14.50, 190.51].
+
+**Coverage:** 264,840 / 276,305 items с эмбеддингом (95.85%); **11,465 (4.15%) — без аудио, остаются нулями**.
+
+**Природа пропусков (sanity-чек по popularity, ячейка в `04_audio_subset.ipynb`):**
+
+| | missing | present |
+|---|---:|---:|
+| median pop | 15 | 18 |
+| mean pop | 73 | 106 |
+| p90 | 142 | 195 |
+| max | 12,770 | 28,268 |
+| pop<10 | 33.9% | — |
+| pop≥50 | 22.1% | — |
+
+Гипотеза «missing = хвост популярности» **отвергнута**: missing размазаны по всему диапазону (max=12,770 listens у missing-трека), median почти равна present. Это **catalog drift** — отсутствие аудио ~для 4% треков не коррелирует с popularity, объясняется доступностью контента (права / удалённые треки / snapshot drift). Соответствует общей картине датасета: yambda README заявляет 7.72M embeddings vs 9.39M items в 5B (~18% gap на полном каталоге, у нас 4% — потому что фильтр `min_pop≥5` всё-таки смещает в сторону популярных).
+
+**Контракт для шагов 4, 9, 10 (audio-aware агрегаторы):**
+
+- Рядом с `embeddings.npy` используем булеву маску `audio_valid = norm(arr, axis=1) > 0` (shape `[n_items+1]`, idx=0 → False как PAD).
+- `C_G` (кандидатный пул) **один и тот же** для всех 4 методов — иначе сравнение методов поедет.
+- AudioAGREE / CrossAttn: missing-кандидаты получают нулевой вклад в attention-логит (mask before softmax). Пользовательский профиль `a_bar_u` усредняется только по valid-items истории.
+- ID-based AGREE и GroupIM маску игнорируют (они не видят аудио).
