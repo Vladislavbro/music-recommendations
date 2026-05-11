@@ -52,8 +52,8 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 |---|---|---|---|
 | 1 | Sanity-чек кэша скоров + фикс архитектурного бага с pad | патч `gsasrec.py` + чистый кэш | ✅ |
 | 2 | Subset аудиоэмбеддингов 276k items → `artifacts/audio/embeddings.npy` | numpy + item_id index + `audio_valid` mask | ✅ |
-| 3 | `src/data/group_synthesis.py` — random-группы, размер 2–5 | модуль + smoke | ⬜ |
-| 4 | Аудиопрофиль пользователя $\bar{a}_u$ (mean по истории listen+) | `artifacts/audio/user_profiles.npy` | ⬜ |
+| 3 | `src/data/group_synthesis.py` — random-группы, размер 2–5 | модуль + smoke | ✅ |
+| 4 | Аудиопрофиль пользователя $\bar{a}_u$ (mean по истории listen+) | `artifacts/audio/user_profiles.npy` | ✅ (код + ноутбук готовы, запуск на Colab) |
 | 5 | `src/eval/metrics.py` (NDCG@K) + `src/eval/group_eval.py` | модули + unit-тест на toy-данных | ⬜ |
 | 6 | `src/training/bpr_loss.py` + `src/training/group_trainer.py` | общий цикл | ⬜ |
 | 7 | `src/aggregators/base.py` + `agree.py` (ID-based AGREE) | модуль | ⬜ |
@@ -148,3 +148,25 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 - `C_G` (кандидатный пул) **один и тот же** для всех 4 методов — иначе сравнение методов поедет.
 - AudioAGREE / CrossAttn: missing-кандидаты получают нулевой вклад в attention-логит (mask before softmax). Пользовательский профиль `a_bar_u` усредняется только по valid-items истории.
 - ID-based AGREE и GroupIM маску игнорируют (они не видят аудио).
+
+### 2026-05-11 — Шаг 3: random-группы ✅
+
+**Артефакт:** [src/data/group_synthesis.py](../src/data/group_synthesis.py) — функция `synthesize_random_groups(user_pool, n_groups, size_distribution, seed)`. Поведение: внутри группы участники уникальны (`replace=False`), между группами повторы разрешены (with replacement) — стандартный ephemeral-setup AGREE/GroupIM. Распределение размеров задаётся словарём `{size: prob}`, проверяется сумма ≈ 1.
+
+**Smoke (`python src/data/group_synthesis.py`):** n_groups=10_000, pool=100 users, distribution `{2: 0.3, 3: 0.4, 4: 0.2, 5: 0.1}` → эмпирические доли `{2: 0.3008, 3: 0.3991, 4: 0.2021, 5: 0.0980}`, mean size 3.097 (target ≈3.10). Детерминизм по seed проверен (seed=0 идентичен, seed=1 отличается).
+
+**Открыто:** train/val/test split групп пока не делаем — формат `Group sample {members, candidates, targets}` соберём в шагах 5/6, когда появится eval-обвязка и определимся с union-target по test-listens.
+
+### 2026-05-11 — Шаг 4: user audio profiles ✅ (код)
+
+**Артефакт:** [src/data/audio_embeddings.py](../src/data/audio_embeddings.py) — функция `build_user_audio_profiles(train_listens, item_embeddings)` → `(profiles[n_users, 128], uid_to_row, user_audio_valid[n_users])`. Усредняет по train listen+ истории, маскируя items с `norm(emb)==0` (4.15% catalog drift из шага 2). Юзеры без valid items получают zero-row и `user_audio_valid=False`.
+
+**Дизайн.** Индексация — compact `[n_users, 128]` + `uid_to_row.pkl` (а не dense `[max_uid+1, ...]`), по аналогии с `item_id_to_idx`. Это даёт ~4.5 MB вместо потенциально гигабайтов на разреженных raw-uids. История — только **train** (после GTS), чтобы не было лика из val/test.
+
+**Smoke (локально, synthetic).** `n_items=10`, 2 missing items (idx 3, 7), 4 юзера; вручную проверены: (а) user с миксом valid+invalid усредняет только valid; (б) user только с invalid item получает zero-row и valid=False; (в) счётчики совпадают. Прошло.
+
+**Ноутбук:** [notebooks/05_user_audio_profiles.ipynb](../notebooks/05_user_audio_profiles.ipynb) — Colab-runner: load YAMBDA-50m → filter (listen+, min_pop≥5) → load `item_id_to_idx.pkl` → remap → GTS → load `embeddings.npy` → `build_user_audio_profiles` → сохранение в `artifacts/audio/{user_profiles.npy, uid_to_row.pkl, user_audio_valid.npy}`. Включён sanity-чек: для случайного uid профиль пересчитывается «руками» и сравнивается с сохранённым (max|diff| < 1e-5).
+
+**Запуск на Colab — pending** (только пользователь может проверить артефакты и обновить лог финальными числами по `user_audio_valid` coverage).
+
+**Контракт для шагов 7–10.** AudioAGREE / GroupCrossAttn в `forward` принимают `audio_profiles_users[B, |G|, 128]` — собираются из этой таблицы по `uid_to_row`. Для юзеров с `user_audio_valid=False` агрегатор должен либо игнорировать их в attention, либо fallback на скоринг без audio-ветки (определимся на шагах 9/10).
