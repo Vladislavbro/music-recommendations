@@ -50,8 +50,8 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 
 | Шаг | Описание | Артефакт | Статус |
 |---|---|---|---|
-| 1 | Sanity-чек кэша скоров + выбор/валидация K | заметка в этом логе | ⚠️ (требуется пересчёт кэша, см. ниже) |
-| 2 | Subset аудиоэмбеддингов 276k items → `artifacts/audio/embeddings.npy` | numpy + item_id index | ⬜ |
+| 1 | Sanity-чек кэша скоров + фикс архитектурного бага с pad | патч `gsasrec.py` + чистый кэш | ✅ |
+| 2 | Subset аудиоэмбеддингов 276k items → `artifacts/audio/embeddings.npy` | numpy + item_id index | 🟡 код готов, ждёт запуска на Colab |
 | 3 | `src/data/group_synthesis.py` — random-группы, размер 2–5 | модуль + smoke | ⬜ |
 | 4 | Аудиопрофиль пользователя $\bar{a}_u$ (mean по истории listen+) | `artifacts/audio/user_profiles.npy` | ⬜ |
 | 5 | `src/eval/metrics.py` (NDCG@K) + `src/eval/group_eval.py` | модули + unit-тест на toy-данных | ⬜ |
@@ -98,27 +98,34 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 - Следующий шаг — 1: открыть `scores.parquet`, проверить K, схему, покрытие пользователей.
 - Зафиксировано: Colab переехал на L4/G4 с 95 GB RAM (новее A100 по поколению), риск RAM для аудио снят.
 
-### 2026-05-11 — Шаг 1, sanity-чек кэша
+### 2026-05-11 — Шаг 1: sanity-чек кэша + фикс архитектурного бага ✅
 
-**Файл:** `artifacts/user_scores_cache/scores.parquet`, 1,834,000 строк, 11.6 MB.
+**Кэш `artifacts/user_scores_cache/scores.parquet`:** 1.83M строк, K=200 на юзера, 9170 uids (из 9194 train; 24 отфильтрованы как <2 events). Схема: `uid` int64, `item_idx` int64, `score` float32, `rank` int32. item_idx ∈ [1, 276299], PAD=0 исключён. K=200 хватает для `C_G = union(top-K members)` при размере групп ≤5.
 
-**Схема (ok):** `uid` int64 (raw user_id YAMBDA, не remap), `item_idx` int64 (0-based, совпадает с `artifacts/gsasrec/item_id_to_idx.pkl`, n_items=276305), `score` float32, `rank` int32.
+**Найдено и пофикшено два бага:**
 
-**K и покрытие:**
-- K = 200 фиксированный, ровно 200 строк на каждого uid. Для группового кандидатного пула `C_G = union(top-K members)`, размер групп ≤5 → ≤1000 кандидатов. K достаточный.
-- 9170 уникальных uid (из 9194 train post-GTS, 24 потеряны — вероятно эмпти после `filter_listens & played_ratio_pct≥50`).
-- 46153 уникальных item_idx во всём union топ-200 (~17% каталога 276k) — ожидаемо (нагрузка на голову популярности).
-- item_idx ∈ [1, 276299], 0 (PAD) корректно исключён.
-- score-распределение (на ok-юзерах): mean 4.51, std 1.48, min −0.06, max 12.82.
+1. **Inference запускался с `exclude_history=True`** — противоречит Phase 1 eval-протоколу (для музыки маскирование занижает NDCG в 3 раза, см. PHASE_1_LOG). Исправлено флагом в ноутбуке.
+2. **Архитектурный баг `GSASRec.forward`:** комбинация `causal_mask + src_key_padding_mask` для query-позиций с all-masked keys давала `softmax(-inf) = NaN`, который через residual'ы протекал до позиции 199. Симптом — 1222 юзера (13.3%) с полностью NaN-кэшем (короткая train-история <200 events). Локально воспроизведено на synthetic n_real ∈ {1..199}; n_real=200 работал. **Фикс** в [src/scorer/gsasrec.py](src/scorer/gsasrec.py): заменил `src_key_padding_mask` на per-batch 3D `attn_mask [B*n_heads, L, L]` с causal+pad-key masking, но всегда доступной диагональю (любая query attend на себя минимум). Distribution shift для real-позиций нулевой, для full-200 юзеров выход бит-в-бит идентичен старому.
 
-**⚠️ Два связанных бага (оба из-за `InferenceConfig.exclude_history=True`):**
+**Латентный эффект на Phase 1:** `evaluate_ndcg` тоже страдал → короткие юзеры давали 0 contribution. Baseline 0.0726 слегка занижен; re-eval не делаю, для текста ВКР — footnote.
 
-1. **1222 пользователя (13.3%) — весь топ-200 битый:** `score = NaN`, `item_idx = 1..200` (placeholder, появляется когда после маскирования всё стало `-inf` и `torch.topk` возвращает первые K индексов post-PAD). Полностью невалидные строки кэша.
-2. **Inconsistency с Phase 1 eval-протоколом.** В Phase 1 финально решили НЕ маскировать историю при ранжировании (закрыло setup-gap 0.0229 → 0.0726, музыкальный домен — переслушивание). Но `cache_user_scores` вызывался с `exclude_history=True` (`src/scorer/inference.py:40,106-108`). Для группового NDCG та же логика → текущий кэш систематически выкидывает кандидатов-переслушивания, которые часть test-таргетов.
+**Финальный кэш:** NaN: 0 (было 244,400), 52,642 уникальных item_idx в union топ-200 (+2.2k vs до фикса), score: mean 4.70, range [-0.22, 17.26], duplicates 0.
 
-**Решение для шага 2 / параллельно:** пересчитать кэш с `exclude_history=False` (одна правка флага в ноутбуке `03_cache_user_scores.ipynb`). На L4 это ~1-2 минуты на 9k user × full-catalog scoring. Альтернатива (отфильтровать 1222 битых uid и оставить mask) — хуже, нарушает eval-протокол Phase 1.
+**Открытое:** возможно поднять K до 500 для popularity-negatives — решу на шаге 6.
 
-**Открытые подвопросы:**
-- Возможно, ещё имеет смысл пересчитать с K=500: aggregator MI-negatives и popularity-negatives могут хотеть бо́льший пул. Отложу решение до шага 6 (group_trainer); если упрёмся — пересчёт дешёвый.
+### 2026-05-11 — Шаг 2: subset аудиоэмбеддингов 🟡 код готов
 
-**Статус шага:** диагностика закрыта, пересчёт кэша добавлен как первая задача шага 2 (а не отдельный шаг — слишком мелкий).
+**Подход.** `embeddings.parquet` (14 GB, 7.72M items) локально не держим — стримим row groups через `HfFileSystem` + `pyarrow.ParquetFile.read_row_group` и фильтруем `np.isin(item_id, target_ids)` по нашим 276,305 items из Phase 1. На диск пишем только результат `[n_items+1, 128]` float32 (~135 MB), row 0 — PAD.
+
+**Артефакты:**
+- [src/data/audio_embeddings.py](src/data/audio_embeddings.py) — функция `extract_audio_subset(item_id_to_idx, output_path, use_normalized=False)`.
+- [notebooks/04_audio_subset.ipynb](notebooks/04_audio_subset.ipynb) — тонкий ноутбук под Colab.
+
+**Probe схемы parquet** (через `HfFileSystem`):
+- `num_row_groups = 30`, `num_rows = 7,721,749`.
+- Колонки: `item_id: uint32`, `embed: large_list<double>`, `normalized_embed: large_list<double>`. Размер фиксированный (128), но pyarrow отдаёт как variable-length list — декодируем через `combine_chunks().flatten().reshape(-1, 128)`.
+- Берём `embed` (не `normalized_embed`); если позднее окажется, что L2-нормировка стабилизирует AudioAGREE — переключим флагом.
+
+**Не запущено.** Локально 14 GB качать не хочется; ждём ближайшую Colab-сессию. Ожидаемое время ~5–10 мин сетевого I/O + парсинг.
+
+**Открытое.** Coverage 276k items vs 7.72M items на HF — `seen`-чек в функции должен показать 0 пропусков, но если будут — это значит, что в Phase 1 после `min_pop≥5` остались id, которых нет в каталоге эмбеддингов; обработаем при первом запуске.
