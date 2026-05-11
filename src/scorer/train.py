@@ -260,10 +260,6 @@ def evaluate_ndcg(
         scores = last @ item_emb.T  # [B, n_items+1]
         scores[:, PAD_IDX] = -float("inf")
 
-        # Mask out items already in user's full history (input + last positive)
-        for i, u in enumerate(chunk):
-            scores[i, train_sequences[u]] = -float("inf")
-
         topk = torch.topk(scores, k=k, dim=1).indices.cpu().numpy()  # [B, k]
 
         for i, u in enumerate(chunk):
