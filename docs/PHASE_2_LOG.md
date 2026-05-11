@@ -115,17 +115,14 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 
 ### 2026-05-11 — Шаг 2: subset аудиоэмбеддингов 🟡 код готов
 
-**Подход.** `embeddings.parquet` (14 GB, 7.72M items) локально не держим — стримим row groups через `HfFileSystem` + `pyarrow.ParquetFile.read_row_group` и фильтруем `np.isin(item_id, target_ids)` по нашим 276,305 items из Phase 1. На диск пишем только результат `[n_items+1, 128]` float32 (~135 MB), row 0 — PAD.
+**Подход.** Качаем `embeddings.parquet` (14 GB, 7.72M × 128) целиком через `hf_hub_download` на Colab-диск, читаем две колонки в `pyarrow.Table`, фильтруем `np.isin(item_id, target_ids)` по 276,305 items из Phase 1, сохраняем `[n_items+1, 128]` float32 (~135 MB), row 0 — PAD. Локально файл не оседает — результат скачиваем после Colab-прогона.
 
 **Артефакты:**
-- [src/data/audio_embeddings.py](src/data/audio_embeddings.py) — функция `extract_audio_subset(item_id_to_idx, output_path, use_normalized=False)`.
-- [notebooks/04_audio_subset.ipynb](notebooks/04_audio_subset.ipynb) — тонкий ноутбук под Colab.
+- [src/data/audio_embeddings.py](src/data/audio_embeddings.py) — `extract_audio_subset(item_id_to_idx, output_path, use_normalized=False)`.
+- [notebooks/04_audio_subset.ipynb](notebooks/04_audio_subset.ipynb) — 4 ячейки: bootstrap → загрузка `item_id_to_idx` → вызов функции → sanity-check.
 
-**Probe схемы parquet** (через `HfFileSystem`):
-- `num_row_groups = 30`, `num_rows = 7,721,749`.
-- Колонки: `item_id: uint32`, `embed: large_list<double>`, `normalized_embed: large_list<double>`. Размер фиксированный (128), но pyarrow отдаёт как variable-length list — декодируем через `combine_chunks().flatten().reshape(-1, 128)`.
-- Берём `embed` (не `normalized_embed`); если позднее окажется, что L2-нормировка стабилизирует AudioAGREE — переключим флагом.
+**Probe схемы parquet:** `num_row_groups=30`, `num_rows=7,721,749`. Колонки: `item_id uint32`, `embed large_list<double>`, `normalized_embed large_list<double>` (dim 128). Берём `embed`, нормированный вариант — флагом при необходимости.
 
-**Не запущено.** Локально 14 GB качать не хочется; ждём ближайшую Colab-сессию. Ожидаемое время ~5–10 мин сетевого I/O + парсинг.
+**Не запущено.** Ждём Colab-сессию.
 
-**Открытое.** Coverage 276k items vs 7.72M items на HF — `seen`-чек в функции должен показать 0 пропусков, но если будут — это значит, что в Phase 1 после `min_pop≥5` остались id, которых нет в каталоге эмбеддингов; обработаем при первом запуске.
+**Открытое.** Если `seen`-чек покажет пропуски — значит, в Phase 1 после `min_pop≥5` остались id, которых нет в каталоге эмбеддингов; обработаем при первом запуске.
