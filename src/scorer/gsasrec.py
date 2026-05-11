@@ -39,6 +39,7 @@ class GSASRec(nn.Module):
         super().__init__()
         self.n_items = n_items
         self.hidden_dim = hidden_dim
+        self.n_heads = n_heads
         self.max_seq_len = max_seq_len
 
         # +1 for padding idx 0; items are 1..n_items
@@ -107,18 +108,24 @@ class GSASRec(nn.Module):
         # zero-out padded positions before encoder (matches yambda reference)
         x = x.masked_fill(pad_mask.unsqueeze(-1), 0.0)
 
-        causal_mask = torch.triu(
+        # Build per-batch 3D attention mask combining causal + pad-key masking.
+        # Diagonal is always kept accessible: any query can attend to itself.
+        # This avoids all-masked attention rows (PyTorch SDPA returns NaN for those)
+        # for sequences with pad positions, without distribution shift for real positions
+        # — pad keys remain blocked for any non-self query.
+        causal = torch.triu(
             torch.ones(L, L, device=seq.device, dtype=torch.bool), diagonal=1
-        )  # True = mask out (future)
+        )  # [L, L], True = future-masked
+        key_pad = pad_mask.unsqueeze(1).expand(B, L, L)  # [B, L, L], pad in KEY dim
+        diag = torch.eye(L, device=seq.device, dtype=torch.bool)  # [L, L]
+        attn_mask = causal.unsqueeze(0) | (key_pad & ~diag.unsqueeze(0))  # [B, L, L]
+        attn_mask = (
+            attn_mask.unsqueeze(1)
+            .expand(B, self.n_heads, L, L)
+            .reshape(B * self.n_heads, L, L)
+        )
 
-        # If a row is fully padded, key_padding_mask must not mask all keys
-        # (would produce NaN). Such rows shouldn't occur in training but guard:
-        all_pad = pad_mask.all(dim=1)
-        kpm = pad_mask.clone()
-        if all_pad.any():
-            kpm[all_pad] = False
-
-        h = self.encoder(x, mask=causal_mask, src_key_padding_mask=kpm)
+        h = self.encoder(x, mask=attn_mask)
         return h
 
     def score(
