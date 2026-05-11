@@ -1,219 +1,124 @@
 # Phase 1 — журнал работы
 
-> Этот документ — **главный источник истины по ходу Phase 1**. Каждая сессия начинается с его прочтения и заканчивается обновлением. Полный план: `~/.claude/plans/zany-questing-wadler.md`. Высокоуровневая дорожная карта проекта: `CLAUDE.md`.
-
-## Как работать с этим логом в новых чатах
-
-В новом чате говоришь: «Продолжаем Phase 1, читай `CLAUDE.md` и `docs/PHASE_1_LOG.md`, выполни следующий незавершённый шаг». Я подхватываю состояние без re-read истории чата.
-
-В конце сессии я **обновляю** этот файл: помечаю шаги ✅, добавляю принятые решения с обоснованием, фиксирую открытые вопросы и числа из data discovery.
+> Главный источник истины по Phase 1. Новые чаты начинают с чтения `CLAUDE.md` + этого файла.
 
 ## Цель Phase 1
 
-Каркас репозитория + рабочий per-user скорер gSASRec на YAMBDA-50m + кэш персональных топ-K скоров. Без агрегаторов, без аудио, без групп. После завершения у нас на диске лежит чекпоинт модели и parquet со скорами для дальнейшего использования в Phase 2.
+Каркас репозитория + рабочий per-user скорер на YAMBDA-50m + кэш персональных топ-K скоров. Без агрегаторов, без аудио, без групп.
+
+## Финальная конфигурация скорера
+
+После серии итераций (см. «Воспроизведение Yandex baseline» ниже) **отказались от gSASRec в пользу plain SASRec с BCE-loss** — конфигом, идентичным яндексовскому baseline.
+
+| Параметр | Значение | Источник |
+|---|---|---|
+| Loss | BCE с 1 uniform негативом | как у Yandex; gBCE дала setup-gap, не помогла |
+| `n_neg` | 1 | как у Yandex |
+| `mix_uniform` | 1.0 (чистый uniform) | как у Yandex |
+| `gbce_t` | 0.0 | формально ставим, эффективно отключает gBCE-калибровку |
+| `hidden_dim` | 64 | яндексовский дефолт (наш 256 не давал преимущества) |
+| `n_heads` | 2 | яндексовский дефолт |
+| `n_layers` | 2 | яндексовский дефолт |
+| `dropout` | 0.2 | оставили (у Яндекса 0.0) |
+| `max_seq_len` | 200 | стандарт SASRec |
+| `lr` | 1e-3 | стандарт |
+| **eval** | **full-catalog NDCG@K БЕЗ маскирования истории** | как у Yandex; ключевое отличие для музыки |
+| Фильтр | `listen & played_ratio_pct≥50`, `min_pop≥5` | стандарт yambda |
+| Split | GTS, `val_size=86400`, `gap=1800`, `test_ts=25_913_600` | стандарт yambda |
+
+**Итог:** test NDCG@10 = **0.0726** на Listen+ (vs Yandex 0.0742, разница в пределах шума → setup-gap закрыт).
 
 ## Зафиксированные решения
 
 | Решение | Обоснование |
 |---|---|
-| Только flavor `50m` | Согласовано с пользователем; полный 5b на Colab не уместится |
-| `t = 0.75` в gBCE | Рекомендация Petrov & Macdonald 2023 для больших каталогов |
-| Pandas-only data infra, без Polars | Свой контроль, не тянем зависимости от yambda; согласовано |
-| Не импортируем код из `references/`, переписываем нужные куски в `src/` | Защита от изменений в апстриме; явная адаптация под наш интерфейс |
-| `git mv yambda → references/yambda`, `git mv gSASRec-pytorch → references/gSASRec-pytorch` | Согласовано; реализуется в Step A |
-| Фильтр событий для скорера: `event_type == 'listen' AND played_ratio_pct >= 50` | Стандарт yambda Constants.TRACK_LISTEN_THRESHOLD; implicit-сигнал, много данных |
-| Аудио (14GB embeddings.parquet) **в Phase 1 не трогаем** | Скорер работает только на ID-эмбеддингах; subset делается в начале Phase 2 на Colab |
-| Левое паддинг в `GSASRec`, прямая нумерация позиций (newest на L-1) | Проще `score()` — берём `hidden[:, -1, :]` без gather |
-| Распределение размеров групп `{2:0.3, 3:0.4, 4:0.2, 5:0.1}` (для Phase 2) | Стандарт из AGREE/GroupIM |
-| Журнал фазы (этот файл) обновляется в конце каждой сессии | Чтобы новые чаты подхватывали контекст без re-read истории |
-| **`max_seq_len = 200`** (зафиксировано после Step 0) | Согласовано с пользователем; матчится с SASRec/gSASRec бенчмарками. Покрывает ~11% медианной истории YAMBDA, но recent-200 достаточно signal'а для скорера |
-| **`hidden_dim = 256`, `n_heads = 4`, `n_layers = 3`** | По плану; стандарт gSASRec/yambda. Для каталога 631k items 128 теряет качество |
-| **Min-popularity filter на items: `≥5 listens`** (после Step 0) | Согласовано; срежет хвост редких треков, обычно теряем 30-50% items без потери NDCG. Уменьшит embedding table |
-| **`VAL_SIZE = 86400` (1 день) оставляем** | Step 0 показал 4,628 users в val — порог >1000 пройден, расширять не нужно |
-| **`d_a = 128`** (audio embed dim, YAMBDA) | Получено через `HfFileSystem` range-read footer'а `embeddings.parquet`, без скачивания 14 ГБ |
+| Только flavor `50m` | Полный 5b на Colab не уместится |
+| Pandas-only data infra | Свой контроль, не тянем Polars из yambda |
+| Не импортируем из `references/`, переписываем в `src/` | Защита от изменений в апстриме |
+| Аудио (14GB) в Phase 1 не трогаем | Скорер работает только на ID |
+| Левый паддинг, прямые позиции 0..L-1 | Проще `score()`: `hidden[:, -1, :]` без gather |
+| `d_a = 128` | Получено через `HfFileSystem` range-read, без скачивания |
 
 ## Прогресс по шагам
 
-| Шаг | Описание | Статус | Артефакты |
-|---|---|---|---|
-| 0 | Data Discovery (`00_data_discovery.ipynb`) | ✅ | `notebooks/00_data_discovery.ipynb` прогнан, числа в разделе «Data discovery findings» |
-| A | mv references + scaffold + requirements + .gitignore | ✅ | `src/{data,scorer,utils}/`, `artifacts/`, `references/{yambda,gSASRec-pytorch}/`, `requirements.txt`, обновлён `.gitignore` |
-| B | `src/utils/{seed,caching}.py` | ✅ | `src/utils/seed.py`, `src/utils/caching.py` |
-| C | `src/data/yambda_loader.py` (без audio) | ✅ | `src/data/yambda_loader.py`; cardinality на real-data сходится со Step 0 |
-| D | `src/data/splits.py` (GTS на pandas) | ✅ | `src/data/splits.py`; инварианты держатся, числа сходятся со Step 0 |
-| E | `notebooks/01_explore_yambda.ipynb` — интеграционный чек `src/data/*` + графики для текста ВКР (history length, item popularity Zipf, train/val/test по времени). EDA-числа НЕ дублируем — они уже в Step 0 | ✅ | `notebooks/01_explore_yambda.ipynb` прогнан; 4 PNG в `docs/figures/` |
-| F | `src/scorer/gsasrec.py` | ✅ | `src/scorer/gsasrec.py` (smoke прошёл) |
-| G | `src/scorer/gbce_loss.py` | ✅ | `src/scorer/gbce_loss.py` (smoke прошёл, t=0 ≡ BCE) |
-| H | `src/scorer/train.py` + `notebooks/02_train_gsasrec.ipynb` | ✅ | `src/scorer/train.py`, `notebooks/02_train_gsasrec.ipynb` (smoke прошёл локально на CPU) |
-| I | `src/scorer/inference.py` + `notebooks/03_cache_user_scores.ipynb` | ✅ | `src/scorer/inference.py`, `notebooks/03_cache_user_scores.ipynb` (smoke прошёл локально) |
-| J | `src/data/group_synthesis.py` (заготовка для Phase 2) | ⬜ | — |
+| Шаг | Описание | Статус |
+|---|---|---|
+| 0 | Data Discovery (`00_data_discovery.ipynb`) | ✅ |
+| A | mv references + scaffold + requirements + .gitignore | ✅ |
+| B | `src/utils/{seed,caching}.py` | ✅ |
+| C | `src/data/yambda_loader.py` | ✅ |
+| D | `src/data/splits.py` (GTS на pandas) | ✅ |
+| E | `notebooks/01_explore_yambda.ipynb` + графики ВКР | ✅ |
+| F | `src/scorer/gsasrec.py` (архитектура) | ✅ |
+| G | `src/scorer/gbce_loss.py` | ✅ (оставлен в коде, но не используется в финальном конфиге) |
+| H | `src/scorer/train.py` + `02_train_gsasrec.ipynb` | ✅ |
+| I+J | `src/scorer/inference.py` + объединённый `03_cache_user_scores.ipynb` (train+cache в одном) | ✅ |
+| K | `src/data/group_synthesis.py` (заготовка под Phase 2) | ⬜ |
 
-✅ — сделано, чекпоинт пройден  
-🟨 — в процессе  
-⬜ — не начато
+## Воспроизведение Yandex baseline 
 
-## Data discovery findings
+Главный результат Phase 1 — не сам скорер, а **диагностика setup-gap**. Начинали с 0.0117, доехали до 0.0726. Полезно для текста ВКР.
 
-> Заполнено по итогам Step 0 (прогон `notebooks/00_data_discovery.ipynb` локально на M4 Pro, 2026-05-10).
+| Шаг | Конфиг | test NDCG@10 |
+|---|---|---|
+| Старт (gSASRec full) | n_neg=512, mix_uniform=0.5, gBCE t=0.75, 256/4/3, **mask history** | 0.0117 |
+| Упростили loss | n_neg=1, mix_uniform=1.0 | 0.0229 |
+| Урезали модель | + 64/2/2 | 0.0229 |
+| Выключили gBCE | + gbce_t=0.0 | 0.0229 |
+| **Убрали маскирование истории** | финальный конфиг | **0.0726** ✅ |
 
-- **Total events (50m, post-load):** 47,790,449
-- **Event_type breakdown:**
-  - listen: 46,467,212 (97.23%)
-  - like: 881,456 (1.84%)
-  - unlike: 312,972 (0.65%)
-  - dislike: 107,776 (0.23%)
-  - undislike: 21,033 (0.04%)
-  - *Note:* `multi_event` отсутствует в `flat-multievent-50m` (есть только в `multi-event` flavor'ах)
-- **Distribution of `played_ratio_pct`** (listen events): median = 100.0, 90p = 100.0 — почти все listen полные
-- **После фильтра `listen & played_ratio_pct >= 50`:**
-  - n_events: **29,439,278** (61.6% от всех listens проходят фильтр)
-  - n_users: **9,209**
-  - n_items (unique tracks): **631,003**
-- **Per-user history length** (post-filter): median = **1798**, 95p = **11,198**, 99p = **17,296**, max = 26,959 → `max_seq_len = 200` (recent-200, покрытие ~11% медианы)
-  - Уточнённая медиана **post-`min_pop≥5`** (Step E): **1758** — фильтр популярности срезает ~2.1% events и 14 user'ов с историей только на редких треках, медиана сдвигается на ~40 listens. На выбор `max_seq_len` не влияет.
-- **Timestamp range:** [0, 25,999,995] → совпадает с `Constants.TEST_TIMESTAMP = 26000000 - 86400 = 25,913,600`, последние ~5 дней попадают в тест
-- **GTS sanity** (val_size=86400, gap=1800):
-  - users в train: 9,207
-  - users в val: **4,628** ✅ (>1000, расширять `VAL_SIZE` не надо)
-  - users в test: 4,600
-- **Audio embed dim (`d_a`):** **128** (получено через `HfFileSystem` range-read schema footer'а `embeddings.parquet`, без скачивания 14 ГБ)
-- **Estimated audio subset size:** 631,003 × 128 × float32 = ~**323 MB** (помещается в RAM целиком; в Phase 2 не нужен streaming)
+**Главное открытие:** в музыке нельзя маскировать историю при ранжировании. Люди переслушивают треки, и в test-таргете часто лежат item'ы из истории. Стандартный movies/books eval-протокол занижает NDCG втрое. Это сильный аргумент в текст ВКР: domain-specific особенность повторного потребления.
 
-### Ключевые наблюдения
+**Второе:** gBCE с `t=0.75` на YAMBDA не помогла. При `n_neg=1` калибровочная трансформация позитивного логита эффективно эквивалентна плейн BCE; при больших `n_neg` мы получали popularity-shortcut. Plain BCE+uniform работает не хуже и проще.
 
-1. **YAMBDA flavor naming = events count, not users.** `50m` ≈ 50M событий ≈ 9-10k users. Для перехода к большему числу users нужен `500m` (~100k) или `5b` (~1M). На Phase 1 9k users — потолок, для синтеза групп по 2-5 хватит десятков тысяч уникальных групп.
-2. **Очень длинные истории.** Медиана 1798 listens/user — это музыкальный стриминг с короткими треками, не MovieLens. `max_seq_len = 200` отсекает агрессивно, но это совпадает со стандартом SASRec/gSASRec — в Phase 2 при необходимости можно сравнить с 500.
-3. **n_items = 631k без фильтра по популярности.** Будем применять min-popularity filter `≥5 listens` в Step C, что должно уменьшить таблицу embedding'ов ощутимо (точное число — после применения фильтра в `yambda_loader.py`).
+## Data discovery findings (Step 0)
+
+- **Total events (50m):** 47,790,449. `listen`: 97.23%, `like`: 1.84%, прочее: <1%.
+- **После `listen & played_ratio_pct ≥ 50`:** 29,439,278 events / **9,209 users** / **631,003 items**.
+- **После `min_pop ≥ 5`:** items 631,003 → 276,305 (-56%), events -2.1%, теряется 14 users.
+- **Per-user history** (post-filter): median **1798** (post-min_pop: 1758), 95p 11,198, 99p 17,296.
+- **Timestamp range:** [0, 25,999,995]. `TEST_TIMESTAMP = 25,913,600`.
+- **GTS sanity** (val_size=86400, gap=1800): train 9,194 / val 4,596 / test 4,576 users.
+- **Audio:** `d_a = 128`, subset 631k items ≈ 323 MB.
+
+**Важное:** YAMBDA flavor `50m` = 50M событий ≈ 9-10k users (НЕ users). Потолок Phase 1. Для большего числа users → `500m`.
 
 ## Открытые вопросы (для Phase 2)
 
-- **Ground truth для групп** в eval: union по listens / intersection / только likes? Решить после анализа размеров пересечений на discovery-стадии.
-- **Стратегия audio subset**: `pyarrow.dataset` через `HfFileSystem` (range-read) vs полная загрузка в Colab vs предварительный subset на личном HF-репо. Решить в начале Phase 2.
-- **Тип групп** (random / homogeneous / heterogeneous): первая итерация — только random.
+- Ground truth для групп: union по listens / intersection / только likes?
+- Audio subset: range-read vs полная загрузка в Colab vs preprocessed HF-repo.
+- Тип групп: первая итерация — random.
 
-## Риски и mitigation
+## История сессий (краткая)
 
-См. раздел "Risks" в `~/.claude/plans/zany-questing-wadler.md`. Главные:
-- groupby по 30M строк → фолбэк `sort_values + np.diff`
-- val может оказаться пустым на 50m + 1-day val → расширить до 2 дней
-- gBCE float64 — **не оптимизировать**
+### 2026-05-10 — Steps 0-A
+- Прогон `00_data_discovery.ipynb`, числа выше.
+- `yambda/` и `gSASRec-pytorch/` переехали в `references/` (были nested git-клоны, не submodules → обычный mv).
+- Scaffold `src/{data,scorer,utils}/`, `requirements.txt`, `.gitignore` (artifacts, references, .pt, .parquet).
 
-## История сессий
+### 2026-05-10 — Steps B-E
+- `src/utils/{seed,caching}.py`, `src/data/yambda_loader.py`, `src/data/splits.py` (pandas-порт `flat_split_train_val_test`).
+- **Решение:** `filter_min_popularity` применяется ДО сплита (иначе train может содержать редкие треки, отсутствующие в val/test после remap).
+- Канонический pipeline: `load → filter_listens → filter_min_popularity → build_item_id_to_idx → apply_item_remap → global_temporal_split`.
+- `notebooks/01_explore_yambda.ipynb` — sanity-чек loaders + 4 графика в `docs/figures/`.
 
-> Каждая сессия добавляет запись в конце. Формат: дата, что сделано, ключевые решения, что осталось.
+### 2026-05-10 — Steps F-G
+- `src/scorer/gsasrec.py`: SASRec с левым паддингом, прямыми позициями, `padding_idx=0`, trunc_normal init.
+- `src/scorer/gbce_loss.py`: порт строк 59-72 из `references/gSASRec-pytorch/train_gsasrec.py`. Float64 для трансформации позитивного логита (не оптимизировать). Smoke подтвердил `gbce(t=0) ≡ BCE`.
 
-### 2026-05-10 — Планирование
-- Сформирован план Phase 1 в `~/.claude/plans/zany-questing-wadler.md`.
-- Решено добавить **Step 0 (Data Discovery)** до написания кода — чтобы реальные числа из YAMBDA-50m информировали выбор `max_seq_len`, GTS `val_size`, candidate pool.
-- Решено отложить аудио на Phase 2 (файл 14GB, в Phase 1 не нужен).
-- Создан этот журнал. Выполнение плана **не начато** — стартует с нового чата.
+### 2026-05-10 — Steps H-I (изначальный конфиг)
+- `src/scorer/train.py`: seq2seq targets, popularity-based negatives с smoothing 0.75, `MixedNegativeSampler` (mix popularity+uniform), `evaluate_ndcg` с маскированием истории, early stopping.
+- `src/scorer/inference.py` + ноутбуки 02/03 (изначально раздельные).
+- Smoke на CPU прошёл.
 
-### 2026-05-10 — Step 0 (notebook scaffolded)
-- Создана директория `notebooks/`.
-- Создан `notebooks/00_data_discovery.ipynb` — все ячейки готовы, прогон ручной (по согласованию с пользователем).
-- Структура ноутбука: load 50m → event_type breakdown → played_ratio_pct distribution → filter listens (≥50%) → per-user history length (median/95p/99p) → timestamp + GTS sanity → audio dim через `HfFileSystem` range-read (без скачивания 14GB) → estimated audio subset → summary cell для копирования в этот лог.
-- Решение по audio dim (Step 0): пробуем range-read через `HfFileSystem` + `pyarrow.ParquetFile`. Если падает (timeouts / unsupported) — `d_a = TBD` до Phase 2, как и зафиксировано в плане.
+### 2026-05-11 — Воспроизведение Yandex baseline
+- Серия итераций (см. таблицу выше): loss → размер модели → gBCE → eval-протокол.
+- Финальный шаг — убрать маскирование истории из `evaluate_ndcg` (строки 263-265 в `train.py` закомментированы). NDCG@10 0.0229 → 0.0726.
+- **Объединил ноутбуки 03+04 в один**: train+cache теперь в `03_cache_user_scores.ipynb`, сразу сохраняет всё нужное для Phase 2.
+- Phase 1 закрыт. Осталось — Step K (group synthesis заготовка) при старте Phase 2.
 
-### 2026-05-10 — Step A ✅ done (scaffold)
-- `yambda/` и `gSASRec-pytorch/` оказались nested git-клонами (со своими `.git`), не submodules — переехали обычным `mv` в `references/`. Поэтому шаг переименован «git mv → mv» в таблице прогресса.
-- Создан scaffold: `src/{data,scorer,utils}/__init__.py`, пустой `artifacts/`. `notebooks/` и `docs/` уже существовали с предыдущих шагов.
-- `requirements.txt` создан по списку из плана.
-- `.gitignore` обновлён: добавлены `artifacts/`, `references/`, `.ipynb_checkpoints/`, `.hf_cache/`, `*.pt`, `*.parquet`. Убрано `docs/` (PHASE_1_LOG.md теперь поедет в репо вместе с кодом — нужно для Colab). `CLAUDE.md` остаётся в `.gitignore` по решению пользователя (пока не публикуем).
-- Чекпоинт пройден: `python3 -c "import src; import src.data; import src.scorer; import src.utils"` отрабатывает.
-- **TODO следующей сессии:** Step B — `src/utils/seed.py` (`set_seed(int)`, фиксирует random/np/torch/cudnn) + `src/utils/caching.py` (round-trip pickle для dict, save/load_parquet для DataFrame).
+## Риски (не реализовавшиеся)
 
-### 2026-05-10 — Steps B-D (код готов, ждёт HF-прогона)
-- **Step B ✅** — `src/utils/seed.py` (`set_seed(seed, deterministic_torch=True)`: PYTHONHASHSEED + random + numpy + torch/cudnn, torch import опционален), `src/utils/caching.py` (`save_pickle/load_pickle`, `save_parquet/load_parquet` с auto-mkdir родительской директории). Sanity round-trip пройден локально.
-- **Step C 🟨** — `src/data/yambda_loader.py`: `load_yambda("50m", cache_dir=...)`, `filter_listens(df, threshold_pct=50)`, `filter_min_popularity(df, min_count=5)`, `build_item_id_to_idx`, `apply_item_remap`, `subsample_users`. Логика проверена на синтетическом DataFrame; полная валидация cardinality (29.4M строк после фильтра, 9209 users) ждёт прогона на M4 Pro с HF-кэшем.
-- **Step D 🟨** — `src/data/splits.py`: pandas-порт `flat_split_train_val_test` с `SplitConfig(test_timestamp=25_913_600, val_size=86_400, gap_size=1_800, drop_non_train_items=False)`. Инварианты `set(val.uid) ⊆ set(train.uid)`, дизъюнктность сегментов, путь `val_size=0` — все проходят на синтетике. Полный чекпоинт (4628 users в val) — на реальных данных.
-- **Step E переформулирован** в таблице прогресса: ноутбук становится интеграционным тестом `src/data/*` + источник графиков для текста ВКР (history length, item popularity Zipf, train/val/test по времени). EDA-числа НЕ дублируем со Step 0.
-- **Решение:** убрал sequential-порт `timesplit.py` в пользу flat-семантики — наша таблица flat (one-row-per-event), не лист-on-list. Семантика идентична: `train < t1`, `val ∈ [t1, t2)`, `test ≥ t2`, val/test ограничены train-users.
-- **Real-data validation (выполнена в этой же сессии):** прогнал на M4 Pro локально (HF-кэш горячий, total 10.5s).
-  - `filter_listens`: 29,439,278 events / 9,209 users / 631,003 items — **точно совпадает** со Step 0.
-  - `filter_min_popularity(≥5)`: items 631,003 → 276,305 (-56%), events -2.1%, теряется 14 users у которых вся история на редких треках.
-  - `global_temporal_split`: train 9,194 / val 4,596 / test 4,576 users (расхождение со Step 0 на ±15-30 users — потому что Step 0 считал без min-pop, ожидаемо). Инварианты val.uid⊆train.uid и test.uid⊆train.uid OK.
-  - **Решение зафиксировать:** `filter_min_popularity` применяем ДО сплита (а не после). Иначе train может содержать редкие треки, отсутствующие в val/test после remap. Порядок: load → filter_listens → filter_min_popularity → build_item_id_to_idx → global_temporal_split.
-- **TODO следующей сессии:**
-  1. Step E: `notebooks/01_explore_yambda.ipynb` — sanity-чек loaders + 3-4 графика для ВКР.
-  2. Step F: `src/scorer/gsasrec.py` — архитектура с левым паддингом.
-
-### 2026-05-10 — Step E ✅ done (notebook прогнан, графики проверены)
-- Создан `notebooks/01_explore_yambda.ipynb` (22 ячейки). Структура:
-  1. Setup: `sys.path.insert(0, PROJECT_ROOT)`, создание `docs/figures/`.
-  2. Pipeline через `src.data.*` в каноническом порядке (load → filter_listens → filter_min_popularity → build_item_id_to_idx → apply_item_remap → global_temporal_split). После каждого шага — сравнение с числами Step 0 через `assert` (29,439,278 events / 9,209 users / 631,003 items).
-  3. GTS split + проверка инвариантов (`val.uid ⊆ train.uid`, дизъюнктность по времени).
-  4. Три графика для ВКР, сохраняются в `docs/figures/` (200dpi PNG):
-     - `history_length_hist.png` — log-y, с линиями `max_seq_len=200` и `median=1798`.
-     - `item_popularity_zipf.png` — log-log, before/after `min_pop≥5`.
-     - `gts_timeline.png` — events per day, с границами GTS.
-     - `gts_timeline_zoom.png` (опционально) — zoom на последние 10 дней.
-- Imports проверены локально (`python3 -c "from src.data.* import ..."` — OK). Ноутбук прогнан пользователем, все 4 графика сохранены в `docs/figures/`.
-- Решение: ноутбук НЕ дублирует Step 0 — числа берутся из Step 0, ноутбук только ставит `assert` поверх loader'а.
-- **Проверка графиков (визуальный анализ):**
-  - `history_length_hist.png` — корректно. **Находка:** post-min_pop median = **1758** (vs 1798 post-filter-only). Различие ~40 listens объясняется потерей 2.1% events после `min_pop≥5`. Зафиксировано в разделе «Data discovery findings» как уточнение.
-  - `item_popularity_zipf.png` — синяя/оранжевая кривые совпадают на rank<200k, расходятся ровно на `min_pop=5` пунктире. Визуально подтверждает: фильтр срезает только хвост (276k items vs 631k), голову не трогает.
-  - `gts_timeline.png` — растущий ~300-дневный train с недельной модуляцией (выходные/будни). Val/test невидимы из-за aspect ratio (1 день vs 300). **Решение:** в текст ВКР пускаем `gts_timeline_zoom.png` как основной, `gts_timeline.png` — в приложение или убираем.
-  - `gts_timeline_zoom.png` — лучший график: чёткий суточный паттерн, val/test совпадают по форме с train (нет distribution shift), 30-min gaps не разрешаются на 1-час корзинах (нормально).
-- **Артефакты Step E:** 4 PNG в `docs/figures/` (всего ~280 KB), `notebooks/01_explore_yambda.ipynb` (22 ячейки).
-- **TODO следующей сессии:**
-  1. Step F: `src/scorer/gsasrec.py` — SASRec-архитектура с левым паддингом, `forward([B,L]) → [B,L,H]`, `score(seq, candidates) → [B,K]`. Адаптация из `references/yambda/benchmarks/models/sasrec/model.py` под наш интерфейс.
-
-### 2026-05-10 — Steps F-G (код готов, ждёт smoke-теста)
-- **Step F 🟨** — `src/scorer/gsasrec.py`. Архитектура близка к yambda SASRec, но проще:
-  - **Left padding, прямые позиции 0..L-1** (newest на L-1) — `score()` берёт `hidden[:, -1, :]` без gather по длинам, что снимает целый класс багов с offsets/cumsum.
-  - `nn.Embedding(n_items+1, H, padding_idx=0)` — padding-idx занулён инициализацией и не обучается (PyTorch это гарантирует).
-  - `nn.TransformerEncoder` (`batch_first=True`) с causal mask `triu(diag=1)` и `src_key_padding_mask = (seq == 0)`. Guard на полностью-пустые строки (kpm=False), чтобы избежать NaN в attention — на реальных батчах не сработает, но защищает unit-тесты.
-  - Init: trunc_normal(std=0.02) для weights, ones для norm, zeros для bias — как в yambda.
-  - Loss НЕ внутри модели (в отличие от yambda), считается снаружи через `gbce_loss` — модель используется и в train, и в `inference.py`.
-- **Step G 🟨** — `src/scorer/gbce_loss.py`. Прямой порт строк 59-72 из `references/gSASRec-pytorch/train_gsasrec.py`, обёрнутый в функцию по сигнатуре из CLAUDE.md.
-  - Сигнатура `gbce_loss(pos_logits, neg_logits, n_items, n_neg, t=0.75)`. Поддерживает broadcast: pos `[B]` / neg `[B, n_neg]` (per-step), и pos `[B, L]` / neg `[B, L, n_neg]` (seq2seq) — `pos.unsqueeze(-1)` приводит формы к `[..., 1]` и `[..., n_neg]`.
-  - Float64 для трансформации позитивного логита (clamp с eps), затем concat и `F.binary_cross_entropy_with_logits(reduction="mean")`. Возврат — в исходном dtype pos.
-  - **НЕ оптимизировать float64 → float32** (зафиксировано в Risks): теряется численная стабильность при больших каталогах (n_items ~6e5).
-- **Smoke-тест ✅ прошёл** на `torch 2.x` (anaconda dev env):
-  - `forward [B=8, L=50] → [8, 50, 64]`, все finite. Left-pad на row 0 (10 паддингов) обработан без NaN.
-  - `score(seq, cand[8,16]) → [8, 16]`, finite.
-  - `gbce_loss` на flat (`pos[B], neg[B,32]`) и seq2seq (`pos[B,L], neg[B,L,32]`) формах — finite.
-  - `gbce(t=0) = 0.745660` точно совпадает с `F.binary_cross_entropy_with_logits` на тех же логитах — подтверждает, что при `t=0` восстанавливается обычный BCE (как заявлено Petrov & Macdonald).
-  - Backward через модель (`m.score → gbce_loss → loss.backward()`): loss finite, **grad на `item_embeddings.weight[0]` (padding-row) = 0.0** — `padding_idx=0` корректно изолирует пад-эмбеддинг от обучения. Все 28 обучаемых параметров получают ненулевой grad.
-- **TODO следующей сессии:**
-  1. Step H: `src/scorer/train.py` (батч-сэмплер на seq2seq targets + popularity-based негативы) + `notebooks/02_train_gsasrec.ipynb` для Colab.
-
-### 2026-05-10 — Steps H-I ✅ done (код + ноутбуки + smoke)
-- **Step H ✅** — `src/scorer/train.py` (~270 строк):
-  - `build_user_sequences(df, max_seq_len)`: dict[uid → np.ndarray], сортировка по timestamp asc, последние `max_seq_len+1` events. Юзеры с <2 events отбрасываются (нет seq2seq target).
-  - `compute_item_popularity(df, n_items, smoothing=0.75)`: word2vec-style сглаживание `count^0.75 / sum`, padding-row=0.
-  - `SeqTrainDataset` + `make_train_collate(max_seq_len)`: collate левым паддингом — `inputs = seq[:-1]`, `targets = seq[1:]`, оба `[B, L]`. Маска padding'а: `targets != PAD_IDX`.
-  - `PopularityNegativeSampler`: `np.random.default_rng().choice` (быстрее `torch.multinomial` для CPU+большой каталог). Коллизии с позитивом игнорируются — при каталоге 276k и n_neg=256 P(коллизии)<0.1%, на gBCE не влияет.
-  - Loss-flow: `hidden = model(inputs)` → `flat_h = hidden[mask]` → embed positives/negatives → `pos_logits = (flat_h * pos_emb).sum(-1)`, `neg_logits = einsum("nh,nkh->nk", flat_h, neg_emb)` → `gbce_loss(pos_logits, neg_logits, n_items, n_neg, t=0.75)`. Усреднение per-position (не per-user) — корректно для seq2seq.
-  - `evaluate_ndcg(...)`: full-catalog NDCG@K на val users, исключение всей train-истории из ранжирования. По умолчанию батч 64, `topk` на GPU, NDCG/IDCG в Python (B небольшое).
-  - `TrainConfig` дефолты: `max_seq_len=200, hidden_dim=256, n_heads=4, n_layers=3, dropout=0.2, n_neg=256, t=0.75, batch_size=128, lr=1e-3, n_epochs=30, early_stop=5`.
-  - `train_gsasrec(train_df, val_df, cfg)` пишет `artifacts/gsasrec/best.pt` (state + cfg + epoch + val_ndcg), `metrics.csv` (per-epoch loss/ndcg/время) и `config.json`. Early stopping по val NDCG@10.
-- **Step I ✅** — `src/scorer/inference.py` (~80 строк):
-  - `load_checkpoint(path)`: восстанавливает архитектуру из `cfg` внутри чекпоинта (без передачи параметров наружу).
-  - `cache_user_scores(model, sequences, max_seq_len, n_items, out_path, cfg)`: батчами строит `last = h[:, -1, :]`, скорит полным каталогом (`last @ item_emb.T`), исключает PAD_IDX и (опционально) train-историю, берёт `topk K`, пишет parquet `(uid, item_idx, score, rank)`.
-  - Дефолт `K=200` — запас для Phase 2 (агрегаторы режут по `|C_G|`); `exclude_history=True` стандарт next-item.
-- **Ноутбуки:**
-  - `notebooks/02_train_gsasrec.ipynb`: setup → канонический pipeline через `src.data.*` → `train_gsasrec(...)` с full-config (n_items, hidden=256, max_seq=200, ...) → загрузка чекпоинта + сохранение `item_id_to_idx.pkl` рядом → график train_loss/val_NDCG. Флаг `SMOKE` для подсэмпла 500 users на M4 Pro.
-  - `notebooks/03_cache_user_scores.ipynb`: тот же pipeline, читает сохранённый `item_id_to_idx.pkl` (гарантия совпадения индексов), прогоняет `cache_user_scores` с `K=200`, sanity-check на parquet.
-- **Smoke-тест ✅** на CPU (50 users / 200 items / 32 hidden / 2 epoch): training run прошёл (loss=0.677→0.664), val_ndcg@10=0.017 на random-данных (>0, sane), checkpoint сохранён, inference дал 50 users × K=10 строк в parquet, диапазон scores разумный. Этим подтверждены: формы тензоров, gbce-loss flow, early stopping, save/load, top-K через `torch.topk`, exclude_history.
-- **Решения:**
-  - Per-position loss (не per-user) — стандарт SASRec, лучше использует длинные последовательности.
-  - Popularity smoothing 0.75 — word2vec-style, отдельный параметр в `TrainConfig`.
-  - `item_id_to_idx` сохраняем рядом с чекпоинтом (`artifacts/gsasrec/item_id_to_idx.pkl`) — без него inference в новом ноутбуке не сможет восстановить mapping. Phase 2 тоже его читает.
-  - `_left_pad` помечен как private (`_left_pad`), но переиспользуется в `inference.py` — допустимо, оба модуля принадлежат scorer-пакету.
-- **Hotfix (после первого Colab-прогона на G4):** `epoch 0/1/2: train_loss быстро падает до 0.008, val_ndcg@10 ≈ 0.0003 ≈ random`. Диагноз — popularity shortcut: 256 negatives из `pop^0.75` всегда дают одни и те же топ-чарт треки → модель учит «жанр в истории = хорошо, попса = плохо», fine-grained next-item не выучивается. **Правка:** добавлен `MixedNegativeSampler` (popularity + uniform), дефолты `TrainConfig`: `n_neg=512, mix_uniform=0.5`. Smoke на CPU прошёл. Ноутбук 02 обновлён.
-- **TODO следующей сессии:**
-  1. Прогнать `02_train_gsasrec.ipynb` на Colab A100 на полных данных, зафиксировать val NDCG@10 в этом логе.
-  2. Прогнать `03_cache_user_scores.ipynb` поверх обученного чекпоинта.
-  3. Step J: `src/data/group_synthesis.py` — заготовка под Phase 2 (random groups).
-
-### 2026-05-10 — Step 0 ✅ done (прогон + решения)
-- Пользователь прогнал `00_data_discovery.ipynb` локально, прислал summary. Числа перенесены в раздел «Data discovery findings» выше.
-- **Решения, принятые на основе чисел:**
-  - `max_seq_len = 200` — несмотря на медиану истории 1798, остаёмся на стандарте SASRec/gSASRec. Recent-200 достаточно signal'а; в Phase 2 при необходимости сравним с 500.
-  - `hidden_dim = 256, n_heads = 4, n_layers = 3` — по плану, не меняем. На каталоге 631k items 128 теряет качество.
-  - **Min-popularity filter на items: `≥5 listens`** — добавляется в `src/data/yambda_loader.py` в Step C. Уменьшит embedding table.
-  - `VAL_SIZE = 86400` (1 день) оставляем — 4,628 users в val, расширять не нужно.
-  - Audio range-read через `HfFileSystem` сработал → `d_a = 128`. Subset для 631k items ≈ 323 MB (помещается в RAM целиком). В Phase 2 audio loader использует `pyarrow.dataset` или per-row-group чтение с `isin`-фильтром по `item_id`.
-- **Важное наблюдение:** YAMBDA flavor `50m` означает 50M событий ≈ 9-10k users (а не 50M users). Это потолок Phase 1. Если в Phase 2 нужно больше users — будет переход на `500m` (~100k users).
-- **TODO следующей сессии:** Step A — `git mv yambda → references/yambda`, `git mv gSASRec-pytorch → references/gSASRec-pytorch`, scaffold `src/{data,scorer,utils}/`, `requirements.txt`, обновление `.gitignore`. Артефакт чекпоинта: `python -c "import src"` работает.
+- groupby по 30M строк → фолбэк `sort_values + np.diff` (не понадобился, pandas справился).
+- val пустой → не случилось (4,596 users).
+- gBCE float64 → не оптимизировали, не понадобилось.
