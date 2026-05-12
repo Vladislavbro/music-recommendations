@@ -53,8 +53,8 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 | 1 | Sanity-чек кэша скоров + фикс архитектурного бага с pad | патч `gsasrec.py` + чистый кэш | ✅ |
 | 2 | Subset аудиоэмбеддингов 276k items → `artifacts/audio/embeddings.npy` | numpy + item_id index + `audio_valid` mask | ✅ |
 | 3 | `src/data/group_synthesis.py` — random-группы, размер 2–5 | модуль + smoke | ✅ |
-| 4 | Аудиопрофиль пользователя $\bar{a}_u$ (mean по истории listen+) | `artifacts/audio/user_profiles.npy` | ✅ (код + ноутбук готовы, запуск на Colab) |
-| 5 | `src/eval/metrics.py` (NDCG@K) + `src/eval/group_eval.py` | модули + unit-тест на toy-данных | ⬜ |
+| 4 | Аудиопрофиль пользователя $\bar{a}_u$ (mean по истории listen+) | `artifacts/audio/user_profiles.npy` | ✅ |
+| 5 | `src/eval/metrics.py` (NDCG@K) + `src/eval/group_eval.py` | модули + unit-тест на toy-данных | ✅ |
 | 6 | `src/training/bpr_loss.py` + `src/training/group_trainer.py` | общий цикл | ⬜ |
 | 7 | `src/aggregators/base.py` + `agree.py` (ID-based AGREE) | модуль | ⬜ |
 | 8 | `src/aggregators/groupim.py` + MI-дискриминатор | модуль | ⬜ |
@@ -170,3 +170,20 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 **Запуск на Colab — pending** (только пользователь может проверить артефакты и обновить лог финальными числами по `user_audio_valid` coverage).
 
 **Контракт для шагов 7–10.** AudioAGREE / GroupCrossAttn в `forward` принимают `audio_profiles_users[B, |G|, 128]` — собираются из этой таблицы по `uid_to_row`. Для юзеров с `user_audio_valid=False` агрегатор должен либо игнорировать их в attention, либо fallback на скоринг без audio-ветки (определимся на шагах 9/10).
+
+### 2026-05-12 — Шаг 5: eval-обвязка (metrics + group_eval) ✅
+
+**Артефакты:**
+- [src/eval/metrics.py](../src/eval/metrics.py) — `dcg_at_k`, `idcg_at_k`, `ndcg_at_k` (низкоуровневый, `[B, L]` бинарных релевантностей + `n_relevant[B]`), `ranking_ndcg_at_k` (сортирует scores per-row, поддерживает несколько K за вызов), `ndcg_from_ranking` (single-query). Векторизовано на numpy, без torch-зависимости — eval-обвязка не зависит от среды агрегатора.
+- [src/eval/group_eval.py](../src/eval/group_eval.py) — `GroupSample` dataclass, `build_group_samples(groups, user_topk, user_test_targets, ground_truth, drop_empty, drop_missing_member)` собирает кандидатные пулы (union top-K членов) и таргеты (union/intersection test-listens ∩ candidates); `evaluate_aggregator_scores(samples, group_scores, k_list)` считает NDCG@K с разбивкой по размеру группы и per-sample массивами под бутстрап CI; хелперы `topk_from_score_cache` и `test_targets_from_df` для подключения parquet'ов из Phase 1.
+- [tests/test_eval.py](../tests/test_eval.py) — 18 toy-тестов (standalone-runner + pytest-совместимо). Покрывают: ручные DCG/IDCG/NDCG, идеальный/нулевой ranking, truncate на K, корректность сортировки по score, batch over rows, union/intersection-target, drop_empty/drop_missing_member, размерные срезы, валидация формы скоров.
+
+**Зафиксированные решения (по уточняющим вопросам в чате):**
+1. **Default ground-truth — union** по test-listens членов. Intersection остаётся параметром (`ground_truth="intersection"`) для sanity-cell в ноутбуке `05_eval_groups.ipynb`.
+2. **Out-of-pool релеванты исключаются.** `targets = union(test_listens) ∩ candidates`. IDCG нормируется только по достижимым релевантам в `C_G`. Это согласовано с тем, что агрегатор не видит весь каталог — оценивать «недостижимый» NDCG бессмысленно.
+
+**Запуск:** `python tests/test_eval.py` → 18/18 passed. Без pytest, через стандартный assert-runner (pytest пока не в requirements).
+
+**Контракт для шага 6 (trainer).** Trainer на каждом батче должен отдавать `list[np.ndarray[|C_G|]]` group-скоров — `evaluate_aggregator_scores` принимает его напрямую. `per_user_scores` для агрегатора собираются отдельно из `scores.parquet` (см. шаг 1 кэш) — не в этом модуле.
+
+**Открытое:** train/val/test split групп пока не зафиксирован (3 ноутбука Phase 2 будут резать groups одинаково по seed — формализуем в шаге 11).
