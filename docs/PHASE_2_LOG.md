@@ -55,7 +55,7 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 | 3 | `src/data/group_synthesis.py` — random-группы, размер 2–5 | модуль + smoke | ✅ |
 | 4 | Аудиопрофиль пользователя $\bar{a}_u$ (mean по истории listen+) | `artifacts/audio/user_profiles.npy` | ✅ |
 | 5 | `src/eval/metrics.py` (NDCG@K) + `src/eval/group_eval.py` | модули + unit-тест на toy-данных | ✅ |
-| 6 | `src/training/bpr_loss.py` + `src/training/group_trainer.py` | общий цикл | ⬜ |
+| 6 | `src/training/bpr_loss.py` + `src/training/group_trainer.py` | общий цикл | ✅ |
 | 7 | `src/aggregators/base.py` + `agree.py` (ID-based AGREE) | модуль | ⬜ |
 | 8 | `src/aggregators/groupim.py` + MI-дискриминатор | модуль | ⬜ |
 | 9 | `src/aggregators/audio_agree.py` | модуль | ⬜ |
@@ -187,3 +187,38 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 **Контракт для шага 6 (trainer).** Trainer на каждом батче должен отдавать `list[np.ndarray[|C_G|]]` group-скоров — `evaluate_aggregator_scores` принимает его напрямую. `per_user_scores` для агрегатора собираются отдельно из `scores.parquet` (см. шаг 1 кэш) — не в этом модуле.
 
 **Открытое:** train/val/test split групп пока не зафиксирован (3 ноутбука Phase 2 будут резать groups одинаково по seed — формализуем в шаге 11).
+
+### 2026-05-12 — Шаг 6: BPR loss + GroupAggregatorTrainer ✅
+
+**Артефакты:**
+- [src/training/bpr_loss.py](../src/training/bpr_loss.py) — `pairwise_bpr_loss(pos, neg)`. Использует `F.logsigmoid` (численно стабилен), бродкастит `[B] vs [B]` и `[B] vs [B,K]`.
+- [src/training/group_trainer.py](../src/training/group_trainer.py) — `GroupTrainConfig`, `GroupAggregatorTrainer`, `GroupTrainDataset`, `GroupEvalDataset`, `collate_groups`, хелперы `build_user_score_lookup`, `lookup_per_user_scores`, `compute_pop_counts`.
+- [tests/test_training.py](../tests/test_training.py) — 13 тестов (BPR + lookup + pop + neg-sampling + collate + end-to-end fit с тривиальным `MeanScoreAggregator`).
+
+**Зафиксированные решения (на уточняющих вопросах в чате):**
+
+1. **Fill для `per_user_scores[u,i]` при item ∉ top-K(u): `0.0`.** Совместимо с любой attention-формой (нет NaN от `-inf`), а реальные scores ∈ [-0.2, 17.3] так что 0 — нижний край, не «нейтраль внутри распределения». Этот же fill используется для pad-позиций в батче.
+2. **Негативы — popularity-weighted из `C_G \ targets`.** В духе CLAUDE.md «popularity-negatives». Веса = popularity^0.75 (как в Phase 1 `compute_item_popularity`), таргеты обнуляются до нормализации. Хвост уже отсеян (`C_G` = union top-K, заведомо релевантные кандидаты) — это и есть hard negatives для группы.
+
+**Расширение контракта `GroupAggregator.forward` (уточнение к CLAUDE.md §4):**
+
+Trainer паддит `|G|` и `|C_G|` до batch-max и передаёт булевы маски как kwargs:
+
+```
+group_mask:     BoolTensor[B, G_max]   # True — реальный член, False — pad
+candidate_mask: BoolTensor[B, C_max]   # True — реальный кандидат, False — pad
+```
+
+Pad-кандидатам после forward присваивается `-inf` (не выигрывают ranking; в `predict_group_scores` обрезаются до реального `|C_G|`). Pad-членам соответствует `per_user_scores=0` и `audio_profile=0` — но агрегатор обязан игнорировать их через `group_mask` (иначе attention/mean сместятся). Эти kwargs обязательны для всех 4 реализаций в шагах 7–10.
+
+**Trainer:**
+- Optimizer — Adam (`weight_decay=0` по умолчанию).
+- Loss = `pairwise_bpr_loss(pos, neg)` + опционально `λ * aggregator.regularization_loss(batch, scores)` если метод определён (для GroupIM на шаге 8).
+- Eval per epoch — `evaluate_aggregator_scores` по val-группам, NDCG@10 (первый K из `eval_k`) как primary для early-stopping.
+- Сохраняет `best.pt`, `config.json`, `metrics.csv` в `out_dir`.
+
+**Smoke (`python tests/test_training.py`):** 13/13 passed. Регрессия по `tests/test_eval.py`: 18/18 passed.
+
+**Контракт для шага 7 (`base.py`).** ABC `GroupAggregator` должен явно объявить kwargs `group_mask: torch.BoolTensor | None`, `candidate_mask: torch.BoolTensor | None`. Реализации (AGREE / GroupIM / AudioAGREE / GroupCrossAttn) обязаны корректно маскировать softmax по членам (исключать pad-членов из нормализации). Для AudioAGREE/CrossAttn также маскировать missing-audio items (см. контракт из шага 2 — `audio_valid`).
+
+**Открытое:** размер K для cached top-K (сейчас 200) → если в шаге 11 средний `|C_G|` окажется маловат для хороших pop-negatives, поднимем K до 500 и пересчитаем кэш (см. шаг 1 открытое).
