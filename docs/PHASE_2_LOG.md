@@ -58,7 +58,7 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 | 6 | `src/training/bpr_loss.py` + `src/training/group_trainer.py` | общий цикл | ✅ |
 | 7 | `src/aggregators/base.py` + `agree.py` (ID-based AGREE) | модуль | ✅ |
 | 8 | `src/aggregators/groupim.py` + MI-дискриминатор | модуль | ✅ |
-| 9 | `src/aggregators/audio_agree.py` | модуль | ⬜ |
+| 9 | `src/aggregators/audio_agree.py` | модуль | ✅ |
 | 10 | `src/aggregators/group_cross_attn.py` | модуль | ⬜ |
 | 11 | `notebooks/04_train_aggregators.ipynb` — обучить все 4 на одном split групп | чекпоинты в `artifacts/aggregators/` | ⬜ |
 | 12 | `notebooks/05_eval_groups.ipynb` — NDCG@10/20 на test-группах, бутстрап CI | csv в `artifacts/eval_results/` | ⬜ |
@@ -286,3 +286,28 @@ Pad-кандидатам после forward присваивается `-inf` (�
 **Открытое:**
 - λ для MI-loss — сетка `{0.1, 0.5, 1.0}` подберём на шаге 11 (`04_train_aggregators.ipynb`), как зафиксировано в «Открытые вопросы» выше.
 - MI-дискриминатор сейчас bilinear; в paper'е — MLP. Если bilinear даст плоский val NDCG, попробуем `MLP(concat(e_u, h_G)) → 1` как замену (тривиальная правка, отложена до экспериментов).
+
+### 2026-05-12 — Шаг 9: AudioAGREE ✅
+
+**Артефакты:**
+- [src/aggregators/audio_agree.py](../src/aggregators/audio_agree.py) — `AudioAGREE(d_audio=128, d_att=64)`.
+- Обновлён [src/aggregators/__init__.py](../src/aggregators/__init__.py) — реэкспорт `AudioAGREE`.
+- [tests/test_aggregators.py](../tests/test_aggregators.py) — +9 тестов AudioAGREE (subclass, shape, raises-without-audio, pad-masking, item-aware, ID-args-ignored, zero-audio-no-NaN, backprop, end-to-end fit).
+
+**Дизайн.** Прямой аналог AGREE из шага 7 с одной заменой: `(e_u, e_i)` → `(a_bar_u, a_i)`. ID-таблиц нет — `phi: Linear(2·d_a → d_att) → GELU → Linear(d_att → 1)` единственный обучаемый компонент. Attention item-aware:
+- `alpha_{u,i} = softmax_u( phi([a_bar_u; a_i]) )` с маскированием pad-членов через `group_mask` (логит → -inf).
+- Group score: `s_G(i) = Σ_u alpha_{u,i} · s_{u,i}`, где `s_{u,i}` — кэш замороженного SASRec.
+
+`group_user_ids` и `candidate_ids` в forward игнорируются (нет ID-эмбеддингов). Контракт base.py позволяет: эти аргументы у нас часть единой сигнатуры для всех 4 агрегаторов, чтобы Trainer мог дёргать одинаковый `_forward(batch)`.
+
+**Зафиксированные решения по этому шагу:**
+
+1. **Missing-audio items/users не маскируются явно.** Контракт шага 2 говорит «missing-кандидаты → нулевой вклад в логит». Реализация: для item с `a_i = 0` MLP-логит зависит только от `a_bar_u` (одна половина concat обнулена); для user с `a_bar_u = 0` — только от `a_i`. Это естественный degradation без edge-cases с softmax(-inf) → NaN. Если у группы вся аудио-сторона нулевая (теоретически возможно), logit одинаковый по членам → uniform alpha → mean per_user_scores, что разумный fallback (= AVG). Покрыто `test_audio_agree_missing_audio_does_not_nan`.
+2. **`d_att=64` по умолчанию** (vs `d_emb=32`/`d_att=32` у AGREE). Вход у нас 2·128=256 (а у AGREE — 2·32=64), поэтому скрытый слой пропорционально больше. Sweep по `d_att` — отложен на шаг 11.
+3. **`forward` raises на отсутствие аудио** (vs тихий ignore у AGREE). Это сигнал, что Trainer без `item_audio`/`user_profiles` запускать AudioAGREE нельзя. Покрыто `test_audio_agree_raises_without_audio`.
+
+**Smoke (`pytest tests/ -q`):** **62/62 passed за ~1.5s** (включая 18 eval + 13 training + 31 aggregators = 22 старых + 9 новых).
+
+**Контракт для шага 10 (`group_cross_attn.py`).** GroupCrossAttention использует те же audio-аргументы, но через multi-head cross-attention с `Q=a_i, K=V=a_bar_u`. Pad-членов маскировать в key_padding_mask, missing-audio items — снова не обязательно (zero-vector key даст близкую к равномерной attention; решим на месте, нужна ли явная маскировка по `audio_valid` если в реальных данных будет много нулевых key-векторов).
+
+**Открытое:** sweep по `d_att` и числу head'ов в cross-attn (шаг 10) сделаем единым прогоном на шаге 11.

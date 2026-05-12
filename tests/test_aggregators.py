@@ -19,6 +19,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.aggregators.agree import IDBasedAGREE  # noqa: E402
+from src.aggregators.audio_agree import AudioAGREE  # noqa: E402
 from src.aggregators.base import GroupAggregator  # noqa: E402
 from src.aggregators.groupim import GroupIM  # noqa: E402
 from src.eval.group_eval import GroupSample  # noqa: E402
@@ -503,6 +504,226 @@ def test_groupim_fit_smoke_with_mi_loss():
         trainer = GroupAggregatorTrainer(
             aggregator=agg, cfg=cfg,
             user_score_lookup=s["lookup"], pop_counts=s["pop_counts"],
+        )
+        result = trainer.fit(s["train"], s["val"], verbose=False)
+        primary_k = cfg.eval_k[0]
+        key = f"best_val_NDCG@{primary_k}"
+        assert key in result
+        assert math.isfinite(result[key])
+        assert 0.0 <= result[key] <= 1.0
+        assert Path(result["checkpoint"]).exists()
+        assert Path(result["metrics_csv"]).exists()
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# AudioAGREE (шаг 9)
+# ---------------------------------------------------------------------------
+
+
+def _make_audio_agree(seed: int = 0, d_audio: int = 16, d_att: int = 8):
+    torch.manual_seed(seed)
+    return AudioAGREE(d_audio=d_audio, d_att=d_att)
+
+
+def test_audio_agree_subclass_of_base():
+    assert issubclass(AudioAGREE, GroupAggregator)
+
+
+def test_audio_agree_forward_output_shape():
+    agg = _make_audio_agree()
+    B, G, C, d_a = 3, 4, 7, 16
+    members = torch.tensor([[1, 2, 3, 0], [2, 3, 0, 0], [1, 4, 5, 2]], dtype=torch.long)
+    cands = torch.randint(1, 21, (B, C), dtype=torch.long)
+    scores = torch.randn(B, G, C)
+    item_aud = torch.randn(B, C, d_a)
+    user_aud = torch.randn(B, G, d_a)
+    gmask = torch.tensor(
+        [[True, True, True, False],
+         [True, True, False, False],
+         [True, True, True, True]]
+    )
+    cmask = torch.ones(B, C, dtype=torch.bool)
+    out = agg(
+        group_user_ids=members,
+        candidate_ids=cands,
+        per_user_scores=scores,
+        audio_embeds_items=item_aud,
+        audio_profiles_users=user_aud,
+        group_mask=gmask,
+        candidate_mask=cmask,
+    )
+    assert out.shape == (B, C)
+    assert torch.isfinite(out).all()
+
+
+def test_audio_agree_raises_without_audio():
+    agg = _make_audio_agree()
+    members = torch.tensor([[1, 2]], dtype=torch.long)
+    cands = torch.tensor([[3, 7]], dtype=torch.long)
+    scores = torch.randn(1, 2, 2)
+    gmask = torch.ones(1, 2, dtype=torch.bool)
+    cmask = torch.ones(1, 2, dtype=torch.bool)
+    try:
+        _ = agg(
+            group_user_ids=members, candidate_ids=cands,
+            per_user_scores=scores, group_mask=gmask, candidate_mask=cmask,
+        )
+    except ValueError:
+        return
+    raise AssertionError("AudioAGREE must raise when audio inputs are missing")
+
+
+def test_audio_agree_pad_members_have_zero_attention():
+    """Маска по G зануляет веса pad-членов: large value в их per_user_scores не прорывается."""
+    agg = _make_audio_agree(seed=1, d_audio=8, d_att=8)
+    B, G, C, d_a = 1, 3, 5, 8
+    members = torch.tensor([[1, 2, 0]], dtype=torch.long)
+    cands = torch.tensor([[3, 7, 11, 13, 19]], dtype=torch.long)
+    scores = torch.randn(B, G, C)
+    scores[0, 2, :] = 1e6
+    item_aud = torch.randn(B, C, d_a)
+    user_aud = torch.randn(B, G, d_a)
+    gmask = torch.tensor([[True, True, False]])
+    cmask = torch.ones(B, C, dtype=torch.bool)
+    out = agg(
+        group_user_ids=members,
+        candidate_ids=cands,
+        per_user_scores=scores,
+        audio_embeds_items=item_aud,
+        audio_profiles_users=user_aud,
+        group_mask=gmask,
+        candidate_mask=cmask,
+    )
+    assert out.abs().max().item() < 100.0
+
+
+def test_audio_agree_attention_is_item_aware():
+    """В отличие от GroupIM, alpha зависит от item — разные audio дают разные alpha по C."""
+    agg = _make_audio_agree(seed=2, d_audio=8, d_att=8)
+    B, G, C, d_a = 1, 2, 3, 8
+    gmask = torch.tensor([[True, True]])
+    # Явно различные item-аудио, чтобы alpha по C точно отличалась.
+    item_aud = torch.zeros(B, C, d_a)
+    item_aud[0, 0, 0] = 1.0
+    item_aud[0, 1, 1] = 1.0
+    item_aud[0, 2, 2] = 1.0
+    user_aud = torch.randn(B, G, d_a)
+
+    a_u_exp = user_aud.unsqueeze(2).expand(B, G, C, d_a)
+    a_i_exp = item_aud.unsqueeze(1).expand(B, G, C, d_a)
+    pair = torch.cat([a_u_exp, a_i_exp], dim=-1)
+    logits = agg.phi_out(agg.act(agg.phi_hidden(pair))).squeeze(-1)
+    logits = logits.masked_fill(~gmask.unsqueeze(-1), float("-inf"))
+    alpha = torch.softmax(logits, dim=1)  # [B, G, C]
+    diff = (alpha[0, :, 0] - alpha[0, :, 1]).abs().max().item()
+    assert diff > 1e-4
+
+
+def test_audio_agree_ignores_id_args():
+    """AudioAGREE не должен опираться на group_user_ids и candidate_ids."""
+    agg = _make_audio_agree(seed=3, d_audio=8, d_att=8)
+    B, G, C, d_a = 1, 2, 3, 8
+    scores = torch.randn(B, G, C)
+    item_aud = torch.randn(B, C, d_a)
+    user_aud = torch.randn(B, G, d_a)
+    gmask = torch.ones(B, G, dtype=torch.bool)
+    cmask = torch.ones(B, C, dtype=torch.bool)
+
+    members_a = torch.tensor([[10, 20]], dtype=torch.long)
+    members_b = torch.tensor([[999, 1234]], dtype=torch.long)
+    cands_a = torch.tensor([[1, 2, 3]], dtype=torch.long)
+    cands_b = torch.tensor([[777, 888, 999]], dtype=torch.long)
+    out_a = agg(
+        group_user_ids=members_a, candidate_ids=cands_a,
+        per_user_scores=scores,
+        audio_embeds_items=item_aud, audio_profiles_users=user_aud,
+        group_mask=gmask, candidate_mask=cmask,
+    )
+    out_b = agg(
+        group_user_ids=members_b, candidate_ids=cands_b,
+        per_user_scores=scores,
+        audio_embeds_items=item_aud, audio_profiles_users=user_aud,
+        group_mask=gmask, candidate_mask=cmask,
+    )
+    assert torch.allclose(out_a, out_b, atol=1e-6)
+
+
+def test_audio_agree_missing_audio_does_not_nan():
+    """Zero item-audio и user-profile (catalog/profile drift) дают конечные значения."""
+    agg = _make_audio_agree(seed=4, d_audio=8, d_att=8)
+    B, G, C, d_a = 1, 2, 4, 8
+    members = torch.tensor([[1, 2]], dtype=torch.long)
+    cands = torch.tensor([[3, 7, 11, 13]], dtype=torch.long)
+    scores = torch.randn(B, G, C)
+    item_aud = torch.randn(B, C, d_a)
+    item_aud[0, 1] = 0.0  # «отсутствующий» аудио (catalog drift)
+    user_aud = torch.randn(B, G, d_a)
+    user_aud[0, 1] = 0.0  # «отсутствующий» профиль второго юзера
+    gmask = torch.ones(B, G, dtype=torch.bool)
+    cmask = torch.ones(B, C, dtype=torch.bool)
+    out = agg(
+        group_user_ids=members, candidate_ids=cands,
+        per_user_scores=scores,
+        audio_embeds_items=item_aud, audio_profiles_users=user_aud,
+        group_mask=gmask, candidate_mask=cmask,
+    )
+    assert torch.isfinite(out).all()
+
+
+def test_audio_agree_backward_updates_parameters():
+    agg = _make_audio_agree(seed=5, d_audio=8, d_att=8)
+    B, G, C, d_a = 1, 3, 4, 8
+    members = torch.tensor([[1, 2, 3]], dtype=torch.long)
+    cands = torch.tensor([[5, 6, 7, 8]], dtype=torch.long)
+    scores = torch.randn(B, G, C)
+    item_aud = torch.randn(B, C, d_a)
+    user_aud = torch.randn(B, G, d_a)
+    gmask = torch.ones(B, G, dtype=torch.bool)
+    cmask = torch.ones(B, C, dtype=torch.bool)
+    out = agg(
+        group_user_ids=members, candidate_ids=cands,
+        per_user_scores=scores,
+        audio_embeds_items=item_aud, audio_profiles_users=user_aud,
+        group_mask=gmask, candidate_mask=cmask,
+    )
+    loss = out.sum()
+    loss.backward()
+    has_grad = any(
+        p.grad is not None and p.grad.abs().sum() > 0
+        for p in agg.parameters()
+    )
+    assert has_grad
+
+
+def test_audio_agree_fit_smoke():
+    """End-to-end fit через trainer с фейковым item_audio и user_profiles."""
+    tmp = Path(tempfile.mkdtemp(prefix="audio_agree_test_"))
+    try:
+        s = _make_smoke_setup()
+        rng = np.random.default_rng(2026)
+        d_a = 12
+        item_audio = rng.normal(0.0, 1.0, size=(s["n_items"] + 1, d_a)).astype(np.float32)
+        item_audio[0] = 0.0  # PAD
+        for missing in [3, 11]:
+            if 1 <= missing <= s["n_items"]:
+                item_audio[missing] = 0.0  # эмулируем catalog drift
+        user_profiles = rng.normal(0.0, 1.0, size=(len(s["uids"]), d_a)).astype(np.float32)
+        uid_to_row = {uid: row for row, uid in enumerate(s["uids"])}
+
+        cfg = GroupTrainConfig(
+            n_epochs=2, batch_size=2, eval_batch_size=2, lr=1e-2,
+            n_neg_per_pos=3, eval_k=(2, 4),
+            early_stop_patience=10, seed=0, log_every_steps=0,
+            out_dir=str(tmp / "audio_agree_run"), device="cpu",
+        )
+        agg = AudioAGREE(d_audio=d_a, d_att=8)
+        trainer = GroupAggregatorTrainer(
+            aggregator=agg, cfg=cfg,
+            user_score_lookup=s["lookup"], pop_counts=s["pop_counts"],
+            item_audio=item_audio, user_profiles=user_profiles,
+            uid_to_row=uid_to_row,
         )
         result = trainer.fit(s["train"], s["val"], verbose=False)
         primary_k = cfg.eval_k[0]
