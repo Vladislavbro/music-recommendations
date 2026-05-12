@@ -61,9 +61,9 @@ Colab переехал с A100 на **G4** (новое поколение NVIDIA
 | 9 | `src/aggregators/audio_agree.py` | модуль | ✅ |
 | 10 | `src/aggregators/group_cross_attn.py` | модуль | ✅ |
 | 11 | `notebooks/06_train_aggregators.ipynb` — обучить все 4 на одном split групп | чекпоинты в `artifacts/aggregators/` (на HF) | ✅ |
-| 12 | `notebooks/05_eval_groups.ipynb` — NDCG@10/20 на test-группах, бутстрап CI | csv в `artifacts/eval_results/` | ⬜ |
-| 13 | `notebooks/06_results_analysis.ipynb` — финальная таблица + графики + LaTeX-фрагмент | заметки + figures | ⬜ |
-| 14 | Тривиальные бейзлайны (AVG / LM / MP) как функции при оценке | дописать в `group_eval.py` | ⬜ |
+| 12 | `notebooks/07_eval_groups.ipynb` §1–6 — NDCG@10/20 на test-группах, bootstrap + paired CI | csv/npz в `artifacts/eval_results/` | 🟡 код готов, ждёт Colab |
+| 13 | `notebooks/07_eval_groups.ipynb` §7 — финальная таблица + forest plot + LaTeX-фрагмент | figures в `docs/figures/` + `summary_table.tex` | 🟡 код готов, ждёт Colab |
+| 14 | Тривиальные бейзлайны (AVG / LM / MP) как функции при оценке | в ноутбуке 07 §2.1 | 🟡 код готов, ждёт Colab |
 
 **Критический путь:** 1 → (2, 3 параллельно) → 4 → 5, 6 → 7..10 → 11 → 12 → 13. Шаги 5 и 6 можно делать параллельно с 7..10.
 
@@ -72,8 +72,9 @@ Colab переехал с A100 на **G4** (новое поколение NVIDIA
 | Ноутбук | Шаги | Что должно получиться на выходе |
 |---|---|---|
 | `06_train_aggregators.ipynb` | 11 | 4 чекпоинта; графики train/val loss; val NDCG@10 по эпохам |
-| `07_eval_groups.ipynb` | 12, 14 | csv-таблица: метод × NDCG@{10,20} × {bootstrap CI}; срез по размеру группы |
-| `08_results_analysis.ipynb` | 13 | финальная таблица + 2-3 figure для ВКР |
+| `07_eval_groups.ipynb` | 12, 13, 14 | csv-таблица: метод × NDCG@{10,20} × bootstrap CI; срез по размеру; forest plot; LaTeX-фрагмент |
+
+> Изначально планировалось 3 ноутбука Phase 2, но шаги 13 и 14 слились в 07: финальный анализ читает in-memory `summary_df`/`per_sample` и работает с тем же bootstrap-протоколом, что и сам eval — нет смысла дублировать.
 
 > Нумерация ноутбуков. В CLAUDE.md план писался от `04_train_aggregators.ipynb`, но к моменту шага 11 диск уже занял 04/05 под `audio_subset` / `user_audio_profiles`. Phase 2 training notebook = **06**, eval = **07**, analysis = **08**.
 
@@ -416,3 +417,46 @@ Per-method overrides:
 **Открытое:**
 - Если на Colab какой-то метод явно не сходится / λ_MI ломает GroupIM — заводим шаг 11b с узкой сеткой (только проблемный гиперпараметр).
 - Bootstrap кода + артефактов на HF протестирован только локально (файлы уже есть → `[skip]`). Реальный pull проверится на Colab.
+
+### 2026-05-12 — Шаг 12: 07_eval_groups.ipynb — обвязка (код готов, ждёт Colab) 🟡
+
+**Артефакт:** [notebooks/07_eval_groups.ipynb](../notebooks/07_eval_groups.ipynb) — 26 ячеек, 7 секций по контракту PHASE_2_LOG. В этот же ноутбук уложен шаг 14 (тривиальные бейзлайны AVG/LM/MP) — финальная таблица будет 7 строк (4 обучаемых + 3 тривиальных), чтобы текст ВКР цитировал одну таблицу с одним и тем же bootstrap-протоколом.
+
+**Структура:**
+1. Bootstrap + HF-download (`hf_hub_download` идемпотентно тянет Phase 1 артефакты, аудио, `groups_split.pkl`, 4 чекпоинта `best.pt` + `config.json`).
+2. Data setup — повтор протокола Phase 1: `load_yambda → filter_listens → filter_min_popularity → apply_item_remap → global_temporal_split`, чтобы `test_df` совпадал с тем, на чём учился скорер.
+3. `build_group_samples(test_groups, user_test_targets, ground_truth='union', drop_empty=True)` → `test_samples` с union-таргетом ∩ candidates (как в шагах 5/11).
+4. Для каждого из 4 методов: реконструкция `IDBasedAGREE/GroupIM/AudioAGREE/GroupCrossAttention(**defaults_из_шага_11)` → `load_state_dict(best.pt)` → `GroupAggregatorTrainer.predict_group_scores(test_samples)` → `evaluate_aggregator_scores` (per-sample arrays). Дефолты `d_emb`/`d_att`/`d_model`/`n_heads` идентичны конфигам ячеек 06_15/17/19/21 — иначе state_dict не загрузится.
+5. Тривиальные бейзлайны (`trivial_group_scores` использует `lookup_per_user_scores` с `fill=0.0`, тот же контракт, что в `GroupTrainConfig.fill_score`).
+6. Bootstrap 1000 resamples с **общей** resample-сеткой (`rng(seed=42)`) → percentile 95% CI; per-size срез на отдельной resample-сетке (4 сетки по размерам); heatmap NDCG@10 (method × size) в `docs/figures/eval_heatmap_method_size.png`.
+7. Paired bootstrap на той же resample-сетке: 4 пары `Audio* − ID*` × 2 K → mean delta + 95% CI + one-sided p `Pr(Δ ≤ 0)`.
+8. Сохранение: `artifacts/eval_results/{summary.csv, summary_by_size.csv, paired.csv, per_sample.npz}`. `per_sample.npz` содержит сырые массивы + `resample_idx`, чтобы шаг 13 мог пересчитать что угодно без перепрогона моделей.
+
+**Зафиксированные решения по этому шагу:**
+
+1. **Тривиальные бейзлайны (шаг 14) — в этом же ноутбуке, не в отдельном.** Финальная таблица для ВКР должна быть одна (7 методов × 2 K × CI), чтобы текст не выделял «обучаемые vs тривиальные» как два разных эксперимента — это один протокол.
+2. **`fill=0.0` для тривиальных бейзлайнов** (item ∉ top-K юзера → 0). Совместимо с `GroupTrainConfig.fill_score` из шага 6 → обучаемые методы и бейзлайны едят одно и то же сырьё. Альтернатива (`fill=-inf` для LM, `fill=0` для остальных) ввела бы asymmetry, которую пришлось бы оправдывать в тексте.
+3. **Общая resample-сетка** для всех методов и paired-теста. Это (а) экономит код, (б) даёт согласованные CI: разница маржинальных средних совпадает с paired delta на каждой bootstrap-выборке. CI для пары `Audio*−ID*` уже бутстрапится из той же `resample_idx[B,n]` (`int32` сохраняется в `per_sample.npz` для воспроизводимости).
+4. **Audio-* vs ID-* paired pairs (4 шт), не all-pairs.** По выбору пользователя — H1-минимальная проверка прямая (audio лучше ID), all-pairs дал бы избыточный шум на multiple testing.
+5. **Heatmap → `docs/figures/`, не в `artifacts/`.** Графики для ВКР живут рядом с уже существующими (`train_4_approaches.png` и т.п.), а не в eval-csv.
+
+**Sanity-чек (локально, CPU):**
+- Все 4 чекпоинта грузятся без missing/unexpected keys (стандартный `load_state_dict`).
+- `predict_group_scores` на subset из 20 групп с synthetic-таргетом возвращает NDCG@10 ≈ 0.55–0.58 (ожидаемо высокий, т.к. fake-таргеты = top-5 у каждого члена).
+- Bootstrap-логика проверена на synthetic-данных (a∼N(0.10, 0.20), b∼N(0.09, 0.20) → mean diff 0.016, CI [-0.009, +0.040], p=0.10) — поведение разумное.
+- AVG/LM/MP в чистом виде → `mean/min/max` по оси G.
+
+**Время прогона (оценка):**
+- Локально на subset 20 групп: 0–0.1с/метод. Полные 2000 test-групп на Colab G4 ≈ 1–2 мин на метод × 4 = 4–8 мин + bootstrap 1000 ≈ секунды на numpy. Итого <10 мин.
+
+**Шаг 13 → секции 7.1–7.5 этого же ноутбука (вместо отдельного 08):**
+- 7.1 — компактная таблица `mean [lo95, hi95]` (читается из in-memory `summary_df`).
+- 7.2 — forest plot NDCG@10 (точки + 95% CI, аудио синие, ID оранжевые, тривиалы серые) → `docs/figures/eval_forest_plot.png`.
+- 7.3 — NDCG@10 vs group size с CI для 5 ключевых методов → `docs/figures/eval_ndcg_by_size.png` (проверяет гипотезу шага 11 о росте audio-преимущества с size).
+- 7.4 — paired-таблица со звёздочками `*/**/***` по p_one_sided.
+- 7.5 — LaTeX-фрагмент в `artifacts/eval_results/summary_table.tex` (`\input{...}` дружелюбно).
+
+**Открытое (риски, которые проявятся на Colab):**
+- Размер `C_G` на test может оказаться > 1024 для крупных групп → CrossAttention медленный (риск из таблицы выше). Если eval будет дольше 5 мин/метод — урезать `candidates` до K_cap=1024 в `predict_group_scores` (потребует мини-патч `GroupEvalDataset`).
+- Union-таргет в test пустой для >5% групп → пересмотр GT-стратегии на шаге 13 (сейчас `drop_empty=True`, статистика логируется ячейкой `TEST stats`).
+- HF-download `best.pt` файлов: на Colab нужно убедиться, что `hf_hub_download` тянет именно из `dataset` repo type (не `model`).
