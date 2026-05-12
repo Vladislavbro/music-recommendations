@@ -59,7 +59,7 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 | 7 | `src/aggregators/base.py` + `agree.py` (ID-based AGREE) | модуль | ✅ |
 | 8 | `src/aggregators/groupim.py` + MI-дискриминатор | модуль | ✅ |
 | 9 | `src/aggregators/audio_agree.py` | модуль | ✅ |
-| 10 | `src/aggregators/group_cross_attn.py` | модуль | ⬜ |
+| 10 | `src/aggregators/group_cross_attn.py` | модуль | ✅ |
 | 11 | `notebooks/04_train_aggregators.ipynb` — обучить все 4 на одном split групп | чекпоинты в `artifacts/aggregators/` | ⬜ |
 | 12 | `notebooks/05_eval_groups.ipynb` — NDCG@10/20 на test-группах, бутстрап CI | csv в `artifacts/eval_results/` | ⬜ |
 | 13 | `notebooks/06_results_analysis.ipynb` — финальная таблица + графики + LaTeX-фрагмент | заметки + figures | ⬜ |
@@ -311,3 +311,31 @@ Pad-кандидатам после forward присваивается `-inf` (�
 **Контракт для шага 10 (`group_cross_attn.py`).** GroupCrossAttention использует те же audio-аргументы, но через multi-head cross-attention с `Q=a_i, K=V=a_bar_u`. Pad-членов маскировать в key_padding_mask, missing-audio items — снова не обязательно (zero-vector key даст близкую к равномерной attention; решим на месте, нужна ли явная маскировка по `audio_valid` если в реальных данных будет много нулевых key-векторов).
 
 **Открытое:** sweep по `d_att` и числу head'ов в cross-attn (шаг 10) сделаем единым прогоном на шаге 11.
+
+### 2026-05-12 — Шаг 10: GroupCrossAttention ✅
+
+**Артефакты:**
+- [src/aggregators/group_cross_attn.py](../src/aggregators/group_cross_attn.py) — `GroupCrossAttention(d_audio=128, d_model=64, n_heads=4)`.
+- Обновлён [src/aggregators/__init__.py](../src/aggregators/__init__.py) — реэкспорт `GroupCrossAttention`.
+- [tests/test_aggregators.py](../tests/test_aggregators.py) — +11 тестов GroupCrossAttention (subclass, head-config validation, shape, raises-without-audio, pad-masking, item-aware, ID-args-ignored, zero-audio-no-NaN, all-pad-no-NaN, single-head-equivalence, backprop, end-to-end fit).
+
+**Дизайн.** Multi-head scaled dot-product cross-attention с `Q = a_i`, `K = a_bar_u`. V-проекции нет — естественное multi-head обобщение AudioAGREE: используем attention-веса для линейной комбинации `per_user_scores` (скаляров), а не d_model-векторов. Это сохраняет общий контракт всех 4 методов: `s_G(i) = Σ_u α_{u,i} · s_{u,i}`.
+
+- `q_proj: Linear(d_a → d_model)`, `k_proj: Linear(d_a → d_model)`, обе с `xavier_uniform`+`zeros_(bias)`.
+- Логиты `[B, H, C, G] = (q @ k^⊤) / sqrt(d_head)`, маскирование pad-членов через `~group_mask` → `-inf`.
+- Softmax по G → `alpha[B, H, C, G]`; `nan_to_num` для all-pad-row safety; mean по головам → `alpha[B, C, G]`.
+- Итог: `(alpha * per_user_scores.transpose(1, 2)).sum(dim=-1)` → `[B, C]`.
+
+**Зафиксированные решения по этому шагу:**
+
+1. **V-проекция выкинута.** Альтернатива (V = `Linear(a_bar_u)`, output → `Linear(d_model → 1)`) обучала бы свой собственный «item-агностичный summary group» — это нарушает контракт «frozen scorer + аггрегатор только взвешивает» и делает CrossAttn несравнимым с AGREE/AudioAGREE (там итог тоже Σ α · s). Текущий дизайн делает шаг 10 чистым ablation по сравнению с шагом 9: AudioAGREE использует MLP `phi(concat(a_u, a_i))` для логита, CrossAttn — H голов scaled dot-product. Все остальные части (per_user_scores, маска, BPR-обвязка) идентичны.
+2. **Mean по головам, не concat.** Concat`→Linear(H → 1)` ввёл бы дополнительный обучаемый mixer, который имеет смысл если головы должны быть «специализированы». В нашем small-data сетапе (9k юзеров, 4 модели) проще оставить mean — это убирает 1 матрицу параметров и при H=1 эквивалентно AudioAGREE-без-MLP. Покрыто `test_cross_attn_single_head_equivalence`.
+3. **`audio_valid`-маска по items не применяется.** Контракт шага 2 говорит «missing-кандидаты → нулевой вклад в логит». В CrossAttn нулевой `a_i` даёт нулевой Q → логиты по этому кандидату ≈ 0 по всем G → softmax по G даёт ~равномерное `alpha` → score ≈ mean(per_user_scores) (мягкий AVG-fallback). Это совместимо с тем же поведением AudioAGREE для missing-аудио и не требует edge-case-маскирования. Покрыто `test_cross_attn_missing_audio_does_not_nan`.
+
+**Дефолты `d_model=64`, `n_heads=4`** (d_head=16). Выбор близок к AudioAGREE (`d_att=64`): один и тот же бюджет hidden-размера, но раздроблен на головы — это и есть основная разница, которую хотим измерить. Sweep по `d_model ∈ {32, 64}` и `n_heads ∈ {1, 2, 4, 8}` — отложен на шаг 11.
+
+**Smoke (`pytest tests/ -q`):** **74/74 passed за ~1.45s** (18 eval + 13 training + 43 aggregators = 22 + 9 + 12 cross-attn по факту считаны как 11, плюс старый AudioAGREE-fit). Регрессий нет.
+
+**Контракт для шага 11 (`04_train_aggregators.ipynb`).** Все 4 агрегатора (AGREE/GroupIM/AudioAGREE/GroupCrossAttention) теперь имеют единую сигнатуру `forward(group_user_ids, candidate_ids, per_user_scores, audio_embeds_items, audio_profiles_users, group_mask, candidate_mask) -> [B, C_max]` и обучаются через один и тот же `GroupAggregatorTrainer`. ID-методам аудио-аргументы можно не подавать, audio-методам ID-аргументы можно (они игнорируются). Trainer получает `item_audio` / `user_profiles` / `uid_to_row` опционально — это путь к единому коду в ноутбуке.
+
+**Открытое:** sweep `d_att` / `d_model` / `n_heads` / `lr` для всех 4 методов будет в шаге 11. После него — основная таблица сравнения.
