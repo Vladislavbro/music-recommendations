@@ -9,6 +9,7 @@ artifacts/
 references/
 .ipynb_checkpoints/
 .hf_cache/
+.pytest_cache/
 
 # Расширения файлов
 *.log
