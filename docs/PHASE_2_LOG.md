@@ -56,7 +56,7 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 | 4 | Аудиопрофиль пользователя $\bar{a}_u$ (mean по истории listen+) | `artifacts/audio/user_profiles.npy` | ✅ |
 | 5 | `src/eval/metrics.py` (NDCG@K) + `src/eval/group_eval.py` | модули + unit-тест на toy-данных | ✅ |
 | 6 | `src/training/bpr_loss.py` + `src/training/group_trainer.py` | общий цикл | ✅ |
-| 7 | `src/aggregators/base.py` + `agree.py` (ID-based AGREE) | модуль | ⬜ |
+| 7 | `src/aggregators/base.py` + `agree.py` (ID-based AGREE) | модуль | ✅ |
 | 8 | `src/aggregators/groupim.py` + MI-дискриминатор | модуль | ⬜ |
 | 9 | `src/aggregators/audio_agree.py` | модуль | ⬜ |
 | 10 | `src/aggregators/group_cross_attn.py` | модуль | ⬜ |
@@ -222,3 +222,37 @@ Pad-кандидатам после forward присваивается `-inf` (�
 **Контракт для шага 7 (`base.py`).** ABC `GroupAggregator` должен явно объявить kwargs `group_mask: torch.BoolTensor | None`, `candidate_mask: torch.BoolTensor | None`. Реализации (AGREE / GroupIM / AudioAGREE / GroupCrossAttn) обязаны корректно маскировать softmax по членам (исключать pad-членов из нормализации). Для AudioAGREE/CrossAttn также маскировать missing-audio items (см. контракт из шага 2 — `audio_valid`).
 
 **Открытое:** размер K для cached top-K (сейчас 200) → если в шаге 11 средний `|C_G|` окажется маловат для хороших pop-negatives, поднимем K до 500 и пересчитаем кэш (см. шаг 1 открытое).
+
+### 2026-05-12 — Шаг 7: base.py + IDBasedAGREE ✅
+
+**Артефакты:**
+- [src/aggregators/base.py](../src/aggregators/base.py) — `GroupAggregator(nn.Module, ABC)` с явной сигнатурой `forward(group_user_ids, candidate_ids, per_user_scores, audio_embeds_items=None, audio_profiles_users=None, group_mask=None, candidate_mask=None) -> [B, C_max]`. Контракт по маскам зафиксирован в docstring.
+- [src/aggregators/agree.py](../src/aggregators/agree.py) — `IDBasedAGREE(uid_list, num_items, d_emb=32, d_att=d_emb)`.
+- [src/aggregators/__init__.py](../src/aggregators/__init__.py) — публичный реэкспорт.
+- [tests/test_aggregators.py](../tests/test_aggregators.py) — 12 тестов (ABC + remap + forward shape/mask + pad-инвариантность + backprop + end-to-end fit + predict shapes).
+
+**Дизайн ID-based AGREE.** Воспроизводим оригинал Cao et al. SIGIR'18 в части attention, отступаем только в том, что per-user score $s_{u,i}$ берётся из замороженного SASRec, а не из $\langle e_u, e_i \rangle$:
+
+- Две learnable таблицы: `user_emb [n_users+1, d]`, `item_emb [n_items+1, d]`, обе с `padding_idx=0`.
+- Item-aware attention: $\alpha_{u,i} = \mathrm{softmax}_u\big(h^\top \tanh(W [e_u; e_i] + b)\big)$. `W: Linear(2d, d_att)`, `h: Linear(d_att, 1, bias=False)`.
+- Group score: $s_G(i) = \sum_u \alpha_{u,i} \cdot s_{u,i}$. Item-эмбеддинги учатся через backprop по attention-логиту, в финальный скор не идут.
+
+**Remap raw uid → compact row** делается внутри модуля: `register_buffer("_sorted_uids", LongTensor([0] + sorted(uid_list)))`, в forward `rows = searchsorted(_sorted_uids, members)`. Это даёт компактную таблицу `n_users+1` независимо от разреженности raw uids в YAMBDA — embedding-таблица user_emb имеет ровно `n_users+1` строк (~9170 для 50m flavor). 0 в `uid_list` отбрасывается (зарезервирован под PAD).
+
+**Контракт по маскам.** В `forward`:
+1. `logits.masked_fill(~group_mask.unsqueeze(-1), -inf)` перед softmax по G — pad-члены получают нулевой вес.
+2. `nan_to_num(alpha, 0.0)` на случай, если у кандидата все G позиций — pad (теоретически невозможно при G≥1 реальных, но safety).
+3. Pad-кандидаты не маскируются на уровне агрегатора — это делает trainer (`-inf` после forward).
+
+Аудио-аргументы (`audio_embeds_items`, `audio_profiles_users`) в сигнатуре есть, но игнорируются — `del` на входе. Это нужно, чтобы Trainer мог использовать один и тот же `_forward(batch)` для всех 4 агрегаторов.
+
+**Регрессионный риск:** изменения только additive (новая директория `src/aggregators/`). `tests/test_eval.py` (18) и `tests/test_training.py` (13) проходят без правок.
+
+**Smoke (`pytest tests/test_aggregators.py tests/test_eval.py tests/test_training.py -q`):** 43/43 passed за 0.98s.
+
+**Контракт для шагов 8–10.** Все три оставшихся агрегатора (GroupIM, AudioAGREE, GroupCrossAttn) наследуются от `GroupAggregator` и обязаны:
+- Корректно маскировать softmax по `group_mask` (для CrossAttn — query/key padding mask).
+- Для audio-методов — дополнительно использовать `audio_valid`-маску по items (см. шаг 2) при формировании attention-логитов.
+- GroupIM реализует `regularization_loss(batch, scores)` для MI-loss — Trainer подключает его автоматически если `cfg.reg_loss_weight > 0`.
+
+**Открытое:** Параметры AGREE (`d_emb`, `d_att`) пока на дефолтах. Sweep по `d_emb ∈ {16, 32, 64}` сделаем на шаге 11 (`04_train_aggregators.ipynb`) вместе с тюнингом lr/n_neg/batch.
