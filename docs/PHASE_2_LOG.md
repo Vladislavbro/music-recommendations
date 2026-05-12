@@ -57,7 +57,7 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 | 5 | `src/eval/metrics.py` (NDCG@K) + `src/eval/group_eval.py` | модули + unit-тест на toy-данных | ✅ |
 | 6 | `src/training/bpr_loss.py` + `src/training/group_trainer.py` | общий цикл | ✅ |
 | 7 | `src/aggregators/base.py` + `agree.py` (ID-based AGREE) | модуль | ✅ |
-| 8 | `src/aggregators/groupim.py` + MI-дискриминатор | модуль | ⬜ |
+| 8 | `src/aggregators/groupim.py` + MI-дискриминатор | модуль | ✅ |
 | 9 | `src/aggregators/audio_agree.py` | модуль | ⬜ |
 | 10 | `src/aggregators/group_cross_attn.py` | модуль | ⬜ |
 | 11 | `notebooks/04_train_aggregators.ipynb` — обучить все 4 на одном split групп | чекпоинты в `artifacts/aggregators/` | ⬜ |
@@ -176,13 +176,13 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 **Артефакты:**
 - [src/eval/metrics.py](../src/eval/metrics.py) — `dcg_at_k`, `idcg_at_k`, `ndcg_at_k` (низкоуровневый, `[B, L]` бинарных релевантностей + `n_relevant[B]`), `ranking_ndcg_at_k` (сортирует scores per-row, поддерживает несколько K за вызов), `ndcg_from_ranking` (single-query). Векторизовано на numpy, без torch-зависимости — eval-обвязка не зависит от среды агрегатора.
 - [src/eval/group_eval.py](../src/eval/group_eval.py) — `GroupSample` dataclass, `build_group_samples(groups, user_topk, user_test_targets, ground_truth, drop_empty, drop_missing_member)` собирает кандидатные пулы (union top-K членов) и таргеты (union/intersection test-listens ∩ candidates); `evaluate_aggregator_scores(samples, group_scores, k_list)` считает NDCG@K с разбивкой по размеру группы и per-sample массивами под бутстрап CI; хелперы `topk_from_score_cache` и `test_targets_from_df` для подключения parquet'ов из Phase 1.
-- [tests/test_eval.py](../tests/test_eval.py) — 18 toy-тестов (standalone-runner + pytest-совместимо). Покрывают: ручные DCG/IDCG/NDCG, идеальный/нулевой ranking, truncate на K, корректность сортировки по score, batch over rows, union/intersection-target, drop_empty/drop_missing_member, размерные срезы, валидация формы скоров.
+- [tests/test_eval.py](../tests/test_eval.py) — 18 toy-тестов (pytest). Покрывают: ручные DCG/IDCG/NDCG, идеальный/нулевой ranking, truncate на K, корректность сортировки по score, batch over rows, union/intersection-target, drop_empty/drop_missing_member, размерные срезы, валидация формы скоров.
 
 **Зафиксированные решения (по уточняющим вопросам в чате):**
 1. **Default ground-truth — union** по test-listens членов. Intersection остаётся параметром (`ground_truth="intersection"`) для sanity-cell в ноутбуке `05_eval_groups.ipynb`.
 2. **Out-of-pool релеванты исключаются.** `targets = union(test_listens) ∩ candidates`. IDCG нормируется только по достижимым релевантам в `C_G`. Это согласовано с тем, что агрегатор не видит весь каталог — оценивать «недостижимый» NDCG бессмысленно.
 
-**Запуск:** `python tests/test_eval.py` → 18/18 passed. Без pytest, через стандартный assert-runner (pytest пока не в requirements).
+**Запуск:** `pytest tests/test_eval.py -q` → 18/18 passed.
 
 **Контракт для шага 6 (trainer).** Trainer на каждом батче должен отдавать `list[np.ndarray[|C_G|]]` group-скоров — `evaluate_aggregator_scores` принимает его напрямую. `per_user_scores` для агрегатора собираются отдельно из `scores.parquet` (см. шаг 1 кэш) — не в этом модуле.
 
@@ -217,7 +217,7 @@ Pad-кандидатам после forward присваивается `-inf` (�
 - Eval per epoch — `evaluate_aggregator_scores` по val-группам, NDCG@10 (первый K из `eval_k`) как primary для early-stopping.
 - Сохраняет `best.pt`, `config.json`, `metrics.csv` в `out_dir`.
 
-**Smoke (`python tests/test_training.py`):** 13/13 passed. Регрессия по `tests/test_eval.py`: 18/18 passed.
+**Smoke (`pytest tests/test_training.py -q`):** 13/13 passed. Регрессия по `tests/test_eval.py`: 18/18 passed.
 
 **Контракт для шага 7 (`base.py`).** ABC `GroupAggregator` должен явно объявить kwargs `group_mask: torch.BoolTensor | None`, `candidate_mask: torch.BoolTensor | None`. Реализации (AGREE / GroupIM / AudioAGREE / GroupCrossAttn) обязаны корректно маскировать softmax по членам (исключать pad-членов из нормализации). Для AudioAGREE/CrossAttn также маскировать missing-audio items (см. контракт из шага 2 — `audio_valid`).
 
@@ -256,3 +256,33 @@ Pad-кандидатам после forward присваивается `-inf` (�
 - GroupIM реализует `regularization_loss(batch, scores)` для MI-loss — Trainer подключает его автоматически если `cfg.reg_loss_weight > 0`.
 
 **Открытое:** Параметры AGREE (`d_emb`, `d_att`) пока на дефолтах. Sweep по `d_emb ∈ {16, 32, 64}` сделаем на шаге 11 (`04_train_aggregators.ipynb`) вместе с тюнингом lr/n_neg/batch.
+
+### 2026-05-12 — Шаг 8: GroupIM + MI-дискриминатор ✅
+
+**Артефакты:**
+- [src/aggregators/groupim.py](../src/aggregators/groupim.py) — `GroupIM(uid_list, num_items, d_emb=32, d_att=d_emb)`.
+- Обновлён [src/aggregators/__init__.py](../src/aggregators/__init__.py) — публичный реэкспорт `GroupIM`.
+- [tests/test_aggregators.py](../tests/test_aggregators.py) — +10 тестов GroupIM (subclass, shape, pad-masking, item-agnostic, audio ignored, MI grad/zero/reset/small-batch, end-to-end fit с `reg_loss_weight>0`).
+
+**Дизайн GroupIM (адаптация Sankar et al. SIGIR'20 под наш сетап):**
+
+- **User-эмбеддинги learnable** `E_user[n_users+1, d]` (`padding_idx=0`). Item-эмбеддинги не нужны: per-user score `s_{u,i}` приходит из замороженного SASRec через `per_user_scores`, аналогично контракту AGREE.
+- **Item-agnostic attention** — ключевая абляция против item-aware AGREE: `alpha_u = softmax_u(h^⊤ tanh(W·e_u))`. У оригинальной GroupIM attention тоже item-agnostic, поэтому это in-spirit paper. Group score: `s_G(i) = Σ_u α_u · s_{u,i}` (одна и та же `α` для всех items).
+- **Group representation** `h_G = Σ_u α_u · e_u` — нужно для MI-loss.
+- **MI-loss** — bilinear-дискриминатор `D(e_u, h_G) = e_u^⊤ W_{MI} h_G`. Положительные пары — `(e_u, h_G)` для `u ∈ G`, негативы — `(e_u, h_{G'})` где `G' = roll(G, 1)` по батчу (cross-batch). BCE через `logsigmoid(pos) + logsigmoid(-neg)`, маска по `group_mask` исключает pad-членов. Замечание: false negatives возможны (тот же uid может оказаться в G и G' из-за ephemeral-семплинга), в первой итерации принимаем шум как в оригинале.
+
+**Хук под Trainer.** Trainer вызывает `aggregator.regularization_loss(batch, scores)` после forward (см. шаг 6). GroupIM кэширует `(member_emb, group_repr, group_mask)` внутри forward только в `self.training=True`, далее `regularization_loss` берёт их и вызывает `mi_loss(...)`, после чего сбрасывает кэш. Eval-режим возвращает скалярный 0 без autograd. Альтернативный публичный `mi_loss(member_emb, group_repr, group_mask, neg_group_repr=None)` — для unit-тестов без forward.
+
+**Зафиксированные решения (свежие, по этому шагу):**
+
+1. **Attention item-agnostic, а не item-aware.** Это намеренный контраст к AGREE (item-aware) для чистой абляции: один и тот же frozen-scorer, одна и та же ID-таблица user-эмбеддингов, разная функция агрегации. Если оба метода хуже audio-веток (шаги 9–10), это будет аргумент за audio-сигнал; если AGREE сильно лучше GroupIM — за item-aware attention в ID-режиме.
+2. **Negatives для MI — batch-shift (`torch.roll`).** Простейшая cross-batch стратегия, не требует дополнительной семплинг-обвязки. При `B<2` (вырожденный случай) MI-loss = 0. Это поведение явно протестировано.
+3. **Кэш state в модуле, не в trainer.** Альтернатива — прокидывать `(member_emb, group_repr)` через возвращаемое значение forward, но это сломало бы единую сигнатуру `[B, C_max]` контракта. Кэш сбрасывается после каждого `regularization_loss` → не утекает в инференс.
+
+**Smoke (`pytest tests/test_aggregators.py -q`):** 22/22 passed. Full regression `pytest tests/ -q`: **53/53 passed за ~0.93s** (включая 18 eval + 13 training + 22 aggregators).
+
+**Контракт для шагов 9–10 (audio-aware агрегаторы).** AudioAGREE и GroupCrossAttn наследуются от того же `GroupAggregator`, должны корректно использовать `audio_valid`-маску по items (см. контракт из шага 2) при формировании attention-логитов, и маскировать softmax по `group_mask`. Учиться без MI-loss (если только мы не захотим audio-вариант MI как отдельный бейзлайн — на сейчас не планируем).
+
+**Открытое:**
+- λ для MI-loss — сетка `{0.1, 0.5, 1.0}` подберём на шаге 11 (`04_train_aggregators.ipynb`), как зафиксировано в «Открытые вопросы» выше.
+- MI-дискриминатор сейчас bilinear; в paper'е — MLP. Если bilinear даст плоский val NDCG, попробуем `MLP(concat(e_u, h_G)) → 1` как замену (тривиальная правка, отложена до экспериментов).
