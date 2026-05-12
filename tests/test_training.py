@@ -1,8 +1,7 @@
 """Unit-тесты для `src/training/{bpr_loss, group_trainer}.py` (Phase 2, шаг 6).
 
 Запуск:
-    python tests/test_training.py        # standalone, без pytest
-    pytest tests/test_training.py -q     # если pytest установлен
+    pytest tests/test_training.py -q
 """
 from __future__ import annotations
 
@@ -391,25 +390,3 @@ def test_trainer_predict_scores_match_eval_shape():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# ---------------------------------------------------------------------------
-# runner
-# ---------------------------------------------------------------------------
-
-def _collect_tests():
-    return [(n, obj) for n, obj in globals().items() if n.startswith("test_") and callable(obj)]
-
-
-if __name__ == "__main__":
-    failures = []
-    for name, fn in _collect_tests():
-        try:
-            fn()
-            print(f"PASS  {name}")
-        except Exception as exc:  # noqa: BLE001
-            failures.append((name, exc))
-            print(f"FAIL  {name}: {exc}")
-    print()
-    if failures:
-        print(f"{len(failures)} test(s) failed.")
-        sys.exit(1)
-    print(f"All {len(_collect_tests())} tests passed.")

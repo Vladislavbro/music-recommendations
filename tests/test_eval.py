@@ -1,8 +1,7 @@
 """Unit-тесты для `src/eval/{metrics, group_eval}.py` (Phase 2, шаг 5).
 
 Запуск:
-    python tests/test_eval.py            # standalone, без pytest
-    pytest tests/test_eval.py -q         # если pytest установлен
+    pytest tests/test_eval.py -q
 """
 from __future__ import annotations
 
@@ -261,25 +260,3 @@ def test_evaluate_aggregator_empty_targets_returns_zero():
     assert _approx(out["NDCG@2"], 0.0)
 
 
-# ---------------------------------------------------------------------------
-# runner
-# ---------------------------------------------------------------------------
-
-def _collect_tests():
-    return [(name, obj) for name, obj in globals().items() if name.startswith("test_") and callable(obj)]
-
-
-if __name__ == "__main__":
-    failures = []
-    tests = _collect_tests()
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception as exc:  # noqa: BLE001
-            failures.append((name, exc))
-            print(f"FAIL  {name}: {exc}")
-        else:
-            print(f"ok    {name}")
-    print(f"\n{len(tests) - len(failures)}/{len(tests)} passed")
-    if failures:
-        sys.exit(1)
