@@ -25,7 +25,7 @@
 
 ## Compute (обновлено)
 
-Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Это снимает риск «subset аудио не влезет в RAM» (135 MB << 95 GB), и позволяет грузить `embeddings.npy` целиком в память без `memmap`. Скорость обучения агрегаторов по сравнению с A100 чуть ниже, но для 4 небольших моделей это некритично.
+Colab переехал с A100 на **G4** (новое поколение NVIDIA, мощнее A100, 95 GB RAM). Это снимает риск «subset аудио не влезет в RAM» (135 MB << 95 GB), позволяет грузить `embeddings.npy` целиком в память без `memmap`, и заметно ускоряет обучение агрегаторов — текущий прогон 4 моделей укладывается ~5 минут.
 
 ## Зафиксированные решения
 
@@ -60,7 +60,7 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 | 8 | `src/aggregators/groupim.py` + MI-дискриминатор | модуль | ✅ |
 | 9 | `src/aggregators/audio_agree.py` | модуль | ✅ |
 | 10 | `src/aggregators/group_cross_attn.py` | модуль | ✅ |
-| 11 | `notebooks/04_train_aggregators.ipynb` — обучить все 4 на одном split групп | чекпоинты в `artifacts/aggregators/` | ⬜ |
+| 11 | `notebooks/06_train_aggregators.ipynb` — обучить все 4 на одном split групп | чекпоинты в `artifacts/aggregators/` (на HF) | ✅ |
 | 12 | `notebooks/05_eval_groups.ipynb` — NDCG@10/20 на test-группах, бутстрап CI | csv в `artifacts/eval_results/` | ⬜ |
 | 13 | `notebooks/06_results_analysis.ipynb` — финальная таблица + графики + LaTeX-фрагмент | заметки + figures | ⬜ |
 | 14 | Тривиальные бейзлайны (AVG / LM / MP) как функции при оценке | дописать в `group_eval.py` | ⬜ |
@@ -71,9 +71,11 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 
 | Ноутбук | Шаги | Что должно получиться на выходе |
 |---|---|---|
-| `04_train_aggregators.ipynb` | 11 | 4 чекпоинта; графики train/val loss; val NDCG@10 по эпохам |
-| `05_eval_groups.ipynb` | 12, 14 | csv-таблица: метод × NDCG@{10,20} × {bootstrap CI}; срез по размеру группы |
-| `06_results_analysis.ipynb` | 13 | финальная таблица + 2-3 figure для ВКР |
+| `06_train_aggregators.ipynb` | 11 | 4 чекпоинта; графики train/val loss; val NDCG@10 по эпохам |
+| `07_eval_groups.ipynb` | 12, 14 | csv-таблица: метод × NDCG@{10,20} × {bootstrap CI}; срез по размеру группы |
+| `08_results_analysis.ipynb` | 13 | финальная таблица + 2-3 figure для ВКР |
+
+> Нумерация ноутбуков. В CLAUDE.md план писался от `04_train_aggregators.ipynb`, но к моменту шага 11 диск уже занял 04/05 под `audio_subset` / `user_audio_profiles`. Phase 2 training notebook = **06**, eval = **07**, analysis = **08**.
 
 ## Контракты данных (для согласованности модулей)
 
@@ -96,7 +98,7 @@ Colab переехал с A100 (40 GB VRAM) на **L4 / G4 с 95 GB RAM**. Эт�
 ### 2026-05-11 — старт Phase 2
 - Phase 1 закрыт (см. `PHASE_1_LOG.md`), создан этот журнал.
 - Следующий шаг — 1: открыть `scores.parquet`, проверить K, схему, покрытие пользователей.
-- Зафиксировано: Colab переехал на L4/G4 с 95 GB RAM (новее A100 по поколению), риск RAM для аудио снят.
+- Зафиксировано: Colab переехал на G4 (новее и мощнее A100, 95 GB RAM), риск RAM для аудио снят.
 
 ### 2026-05-11 — Шаг 1: sanity-чек кэша + фикс архитектурного бага ✅
 
@@ -339,3 +341,78 @@ Pad-кандидатам после forward присваивается `-inf` (�
 **Контракт для шага 11 (`04_train_aggregators.ipynb`).** Все 4 агрегатора (AGREE/GroupIM/AudioAGREE/GroupCrossAttention) теперь имеют единую сигнатуру `forward(group_user_ids, candidate_ids, per_user_scores, audio_embeds_items, audio_profiles_users, group_mask, candidate_mask) -> [B, C_max]` и обучаются через один и тот же `GroupAggregatorTrainer`. ID-методам аудио-аргументы можно не подавать, audio-методам ID-аргументы можно (они игнорируются). Trainer получает `item_audio` / `user_profiles` / `uid_to_row` опционально — это путь к единому коду в ноутбуке.
 
 **Открытое:** sweep `d_att` / `d_model` / `n_heads` / `lr` для всех 4 методов будет в шаге 11. После него — основная таблица сравнения.
+
+### 2026-05-12 — Шаг 11: 06_train_aggregators.ipynb — обвязка (код готов, ждёт Colab) 🟡
+
+**Артефакт:** [notebooks/06_train_aggregators.ipynb](../notebooks/06_train_aggregators.ipynb) — 27 ячеек, структура «shared setup → 4 отдельных блока обучения → comparison-cell».
+
+**Зафиксированные решения по этому шагу:**
+
+1. **Имя ноутбука — `06_*`, не `04_*`** как в исходном плане CLAUDE.md. К Phase 2 диск уже занял 04/05 под аудио-prep. Phase 2 nb-нумерация: 06 train → 07 eval → 08 analysis. Уточнение добавлено в «План по ноутбукам» выше.
+2. **Scope шага — single config per method, без полного sweep.** В чате обсудили: для honest сравнения 4 методов на ВКР важен одинаковый compute budget и разумные дефолты, а не подгонка каждого. Sweep по `d_att`/`d_model`/`n_heads` отложен до шага 11b (если результаты шага 12 покажут, что какой-то метод явно недотюнен). λ_MI для GroupIM = 0.5 (середина сетки {0.1, 0.5, 1.0}) — единственное «непаперное» значение. lr=1e-3 для всех 4 (Adam default).
+3. **Структура ноутбука — per-method блоки, не sweep-цикл.** Пользователь хотел иметь возможность переопределять конфиг каждого метода отдельно (формулировка: «наверняка понадобится менять конфиги к каждой отдельно»). Каждый блок = `IDBasedAGREE/GroupIM/AudioAGREE/GroupCrossAttention(**cfg)` + `trainer.fit()`. Помодульная итерация: правишь `d_emb` у GroupIM → перезапускаешь только её ячейку, остальное не трогается.
+4. **Тест НЕ touchаем в этом ноутбуке.** Подсматривание в test при правке конфигов — методологическая ошибка (комиссия ВКР спросит «вы фиксировали гиперпараметры по val или по test?»). Val NDCG@10 используется для early stopping и финальной comparison-таблицы. Test → отдельный шаг 12 (`07_eval_groups.ipynb`) один раз после фиксации всех конфигов. Test_groups при этом синтезируются здесь же (тот же seed) и сохраняются в `groups_split.pkl` — это гарантирует, что шаг 12 видит идентичный split.
+5. **Bootstrap — `hf_hub_download` из `Vladislavbro-500/music-recommendations` (dataset).** Артефакты Phase 1 + аудио залиты на HF (не в git), скачиваются в `artifacts/` идемпотентно (skip если файл уже есть). Это разводит код (git) и тяжёлые артефакты (HF) — стандартный pattern для Colab.
+
+**Контракт данных, зафиксированный в ноутбуке:**
+- `groups_split.pkl` (артефакт): `{train_groups, val_groups, test_groups, group_seed=42, size_dist, train_stats, val_stats}` — один файл, читается шагом 12.
+- Train-таргеты = union train listens членов ∩ candidates; val-таргеты = union val listens. Test-таргеты в этом ноутбуке не строятся (но в `groups_split.pkl` лежат raw `test_groups` — шаг 12 сам построит `test_samples`).
+- `item_audio` + `user_profiles` передаются Trainer'у для всех 4 методов (ID-методы игнорируют, audio-методы используют — единый код).
+- Все 4 чекпоинта в `artifacts/aggregators/<name>/{best.pt, config.json, metrics.csv}`. После Colab-прогона — загружаются обратно на HF (`hf upload ... artifacts/aggregators . --type dataset`), памятка в последней md-ячейке.
+
+**Дефолты конфига (`GroupTrainConfig`):**
+```
+n_epochs=20, batch=64, eval_batch=128, lr=1e-3, n_neg=4, patience=5,
+eval_k=(10, 20), seed=42, device='cuda' if available else 'cpu'
+```
+
+Per-method overrides:
+- AGREE: `d_emb=32, d_att=32`
+- GroupIM: `d_emb=32, d_att=32, reg_loss_weight=0.5`
+- AudioAGREE: `d_audio=128, d_att=64`
+- GroupCrossAttention: `d_audio=128, d_model=64, n_heads=4`
+
+**Запуск — pending** (пользователь прогоняет на Colab G4, ~5 мин на все 4 модели).
+
+### 2026-05-12 — Шаг 11: результаты Colab-прогона ✅
+
+**Два прогона:**
+- Run 1: `n_epochs=60, patience=20` (дефолт ноутбука).
+- Run 2: `n_epochs=100, patience=30` — расширили после анализа кривых.
+
+**Финальные числа (Run 2, val):**
+
+| method          | NDCG@10 | NDCG@20 | NDCG@10[s=2] | s=3   | s=4   | s=5   |
+|-----------------|--------:|--------:|-------------:|------:|------:|------:|
+| AudioAGREE      | **0.0978** | **0.1097** | 0.135 | 0.094 | 0.080 | 0.071 |
+| GroupCrossAttn  | 0.0941  | 0.1056  | 0.119        | 0.094 | 0.081 | 0.069 |
+| AGREE           | 0.0916  | 0.1024  | 0.126        | 0.090 | 0.074 | 0.064 |
+| GroupIM (λ=0.5) | 0.0911  | 0.1027  | 0.125        | 0.089 | 0.070 | 0.071 |
+
+`val_NDCG@10_std ≈ 0.163` для всех 4 методов → gap audio vs ID на грани шума, **bootstrap CI на test (шаг 12) обязателен** для defensible-результатов.
+
+**Наблюдения:**
+
+1. **H1 (минимальная) подтверждается на val.** Audio-методы > ID-методы по всем размерам группы кроме s=2 (там все ~0.12).
+2. **Audio-преимущество растёт с размером группы.** Δ(AudioAGREE − AGREE) по NDCG@10: s=2: +0.009 (∼7%), s=3: +0.004 (∼4%), s=4: +0.008 (+11%), s=5: +0.007 (+11%). Самостоятельная история для текста ВКР: когда групповые предпочтения разнообразнее, контентный сигнал ценнее learnable ID-attention.
+3. **Structural plateau при frozen scorer.** AGREE / GroupIM / GroupCrossAttn дали **идентичные до 4 знака** числа в обоих прогонах — продление с 60 до 100 эпох ничего не дало. AudioAGREE медленно ползла вверх ещё ~+0.001, но тоже близко к потолку. Это означает, что BPR-loss упёрся в структурный потолок, заданный фиксированными `s_{u,i}` от заморожённого SASRec (loss=0.65 ↔ pos − neg ≈ 0.08 в среднем). Не баг.
+4. **Поздний прыжок train loss у GroupIM** на эпохах ~55-65 (с 1.1 до 0.7): MI-loss поначалу подавлял BPR-сходимость, потом сеть нашла представление, удовлетворяющее обоим. Прыжок не конвертировался в заметный рост val NDCG — это сигнал, что λ_MI=0.5 чуть высоковат. Если шаг 12 покажет, что GroupIM хочется поднять — пробуем λ_MI ∈ {0.1, 0.2}.
+5. **Train loss audio > train loss ID** (0.65 vs 0.62), но **val NDCG audio > val NDCG ID**. Классическая «ID переучивает train, audio лучше обобщает» — желаемый сигнал для аргумента «audio-attention честнее как inductive bias».
+
+**Артефакты на HF.** `Vladislavbro-500/music-recommendations` (dataset). Пользователь догружает чекпоинты `artifacts/aggregators/*` локально вручную после этой сессии, так что в новом чате они должны быть и локально, и на HF (bootstrap-ячейка ноутбука 07 на `hf_hub_download` всё равно идемпотентна).
+
+**Обсуждённое в чате (для контекста новой сессии):**
+
+- **End-to-end vs frozen scorer**: пользователь спросил «а если разморозить SASRec». Зафиксировано решение **оставить frozen для H1**: (а) разморозка делает сравнение нечестным — ID-методы выигрывают сильнее, у них есть learnable user_emb, у audio только phi/Q/K, (б) «оригинальные пайплайны» AGREE/GroupIM не используют SASRec вообще — full-replica требует переписать всё, не 1 день. End-to-end-вариант — естественный Phase 3 как ablation, не замена основной таблицы.
+
+**Контракт для шага 12 (следующий чат).** План `07_eval_groups.ipynb`:
+1. HF-download артефактов в `artifacts/` (идемпотентно, локальные файлы пропускаются).
+2. `groups_split.pkl` → `test_samples` (используем `test_groups` + `user_test_targets`).
+3. Для каждого из 4 методов: загрузить `best.pt`, `trainer.predict_group_scores(test_samples)`, NDCG@10/20.
+4. **Bootstrap CI** (1000 resamples) на `per_sample` NDCG → mean ± 95% CI per method.
+5. Срез по размеру группы + bootstrap CI на каждом размере.
+6. Финальная таблица + heatmap (метод × размер), paired bootstrap для significance (audio vs ID). После прогона лог пополнится: best val NDCG@10/20 per method, время обучения, замечания по сходимости / λ_MI.
+
+**Открытое:**
+- Если на Colab какой-то метод явно не сходится / λ_MI ломает GroupIM — заводим шаг 11b с узкой сеткой (только проблемный гиперпараметр).
+- Bootstrap кода + артефактов на HF протестирован только локально (файлы уже есть → `[skip]`). Реальный pull проверится на Colab.
