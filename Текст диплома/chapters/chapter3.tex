@@ -89,14 +89,14 @@
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[width=0.85\textwidth]{../docs/figures/history_length_hist.png}
+    \includegraphics[width=0.85\textwidth]{graphics/history_length_hist.png}
     \caption{Распределение длины пользовательских историй после фильтрации (YAMBDA-50m, listen+, \texttt{min\_pop}~$\geq$~5). Log-шкала по оси~$y$. Вертикальные линии~--- медиана ($\sim\!1{,}760$) и выбранное значение \texttt{max\_seq\_len}~=~200.}
     \label{fig:history-hist}
 \end{figure}
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[width=0.85\textwidth]{../docs/figures/item_popularity_zipf.png}
+    \includegraphics[width=0.85\textwidth]{graphics/item_popularity_zipf.png}
     \caption{Распределение популярности треков (log-log) до и после фильтра \texttt{min\_pop}~$\geq$~5. Фильтр срезает только хвост каталога ($631\mathrm{k} \to 276\mathrm{k}$ треков), не затрагивая голову распределения.}
     \label{fig:item-pop-zipf}
 \end{figure}
@@ -113,7 +113,7 @@
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[width=0.85\textwidth]{../docs/figures/gts_timeline_zoom.png}
+    \includegraphics[width=0.85\textwidth]{graphics/gts_timeline_zoom.png}
     \caption{Глобальный временной сплит, увеличенное окно на границе train/val/test. Видна суточная модуляция активности и согласованность распределений между сегментами (отсутствие distribution shift). Защитные зазоры в 30~минут не разрешаются на часовых корзинах гистограммы.}
     \label{fig:gts-timeline}
 \end{figure}
@@ -148,7 +148,7 @@
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[width=0.75\textwidth]{../docs/figures/sasrec_graph.png}
+    \includegraphics[width=0.75\textwidth]{graphics/sasrec_graph.png}
     \caption{Схема архитектуры SASRec~\cite{sasrec2018}: входная последовательность item-эмбеддингов с добавленными позиционными эмбеддингами проходит через стек блоков self-attention с каузальной маской и feed-forward подсетей; представление последнего токена используется для скоринга кандидатов через скалярное произведение с item-эмбеддингами.}
     \label{fig:sasrec-arch}
 \end{figure}
@@ -337,7 +337,7 @@
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[width=0.95\textwidth]{../docs/figures/train_4_approaches.png}
+    \includegraphics[width=0.95\textwidth]{graphics/train_4_approaches.png}
     \caption{Кривые обучения четырёх агрегаторов: train loss и val~NDCG@10 по эпохам. Audio-методы (Audio-AGREE, Group Cross-Attention) выходят на более высокий уровень val-метрики относительно ID-методов (AGREE, GroupIM).}
     \label{fig:train-4-approaches}
 \end{figure}
@@ -411,7 +411,7 @@ Paired bootstrap исключает эту общую часть, рассчит
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[width=0.95\textwidth]{../docs/figures/eval_forest_plot.png}
+    \includegraphics[width=0.95\textwidth]{graphics/eval_forest_plot.png}
     \caption{Forest plot paired-разностей audio−ID и маргинальных значений NDCG@10/20 для семи методов. Все восемь paired-разностей значимо положительны (CI не пересекает~0).}
     \label{fig:forest-plot}
 \end{figure}
@@ -441,14 +441,14 @@ Paired bootstrap исключает эту общую часть, рассчит
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[width=0.85\textwidth]{../docs/figures/eval_ndcg_by_size.png}
+    \includegraphics[width=0.85\textwidth]{graphics/eval_ndcg_by_size.png}
     \caption{NDCG@10 в зависимости от размера группы. Audio-методы устойчиво лидируют на $|G| \geq 3$; на $|G| = 2$ преимущество не выражено.}
     \label{fig:ndcg-by-size}
 \end{figure}
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[width=0.85\textwidth]{../docs/figures/eval_heatmap_method_size.png}
+    \includegraphics[width=0.85\textwidth]{graphics/eval_heatmap_method_size.png}
     \caption{Heatmap метод${\times}$размер группы по NDCG@10. Тёмный край у audio-методов на $|G| \in \{4, 5\}$ показывает источник их общего преимущества~--- группы среднего размера.}
     \label{fig:heatmap-method-size}
 \end{figure}
