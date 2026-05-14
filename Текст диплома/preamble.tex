@@ -1,0 +1,84 @@
+\usepackage{geometry}
+\geometry{
+  left=25mm,
+  right=10mm,
+  top=20mm,
+  bottom=20mm
+}
+
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[english,russian]{babel}
+
+\usepackage{csquotes}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\usepackage{mathtools}
+
+\usepackage{graphicx}
+\graphicspath{{graphics/}}
+\usepackage{xurl}
+
+\usepackage{setspace}
+\onehalfspacing
+
+\usepackage{indentfirst}
+\setlength{\parindent}{1.25cm}
+
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\usepackage{caption}
+\usepackage{subcaption}
+
+\addto\captionsrussian{\def\figurename{Рисунок}}
+\addto\captionsrussian{\def\tablename{Таблица}}
+\captionsetup{labelsep=endash}
+\AtBeginEnvironment{figure}{\captionsetup{justification=centering}}
+\AtBeginEnvironment{table}{\captionsetup{justification=raggedright,singlelinecheck=false}}
+
+\usepackage{booktabs}
+\usepackage[flushleft]{threeparttable}
+\usepackage{tablefootnote}
+\usepackage{colortbl}
+\usepackage{tikz}
+\usepackage{pgf}
+\usepackage{listings}
+
+\usepackage{chngcntr}
+\counterwithin{table}{section}
+\counterwithin{figure}{section}
+
+\usepackage[
+  colorlinks,
+  citecolor=blue,
+  linkcolor=blue,
+  urlcolor=blue,
+  bookmarks=false,
+  hypertexnames=true
+]{hyperref}
+
+\emergencystretch=1em
+
+\usepackage[
+  backend=biber,
+  style=gost-numeric,
+  sorting=none
+]{biblatex}
+\addbibresource{references.bib}
+\AtBeginBibliography{\sloppy}
+
+\addto\captionsrussian{\def\refname{Список использованных источников}}
+\addto\captionsrussian{\def\bibname{Список использованных источников}}
+
+\renewcommand{\theenumi}{\arabic{enumi}}
+\renewcommand{\labelenumi}{\arabic{enumi}}
+\renewcommand{\theenumii}{.\arabic{enumii}}
+\renewcommand{\labelenumii}{\arabic{enumi}.\arabic{enumii}.}
+\renewcommand{\theenumiii}{.\arabic{enumiii}}
+\renewcommand{\labelenumiii}{\arabic{enumi}.\arabic{enumii}.\arabic{enumiii}.}

@@ -10,7 +10,6 @@ references/
 .ipynb_checkpoints/
 .hf_cache/
 .pytest_cache/
-Текст диплома/
 
 # Расширения файлов
 *.log
@@ -22,5 +21,6 @@ catboost_test.py
 log_wrapper.py
 .DS_Store
 CLAUDE.md
+CHAPTER_3_REWRITE_PLAN.md
 
 settings.json
