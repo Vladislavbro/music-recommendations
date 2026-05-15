@@ -144,11 +144,6 @@ music-recommendations/
 │
 ├── docs/figures/            # графики для текста ВКР
 │
-├── logs/                    # журналы фаз и планы переписывания глав
-│   ├── PHASE_1_LOG.md
-│   ├── PHASE_2_LOG.md
-│   ├── CHAPTERS_1_2_REWRITE_PLAN.md
-│   └── CHAPTER_3_REWRITE_PLAN.md
 │
 ├── Текст диплома/           # LaTeX-исходники (см. ниже)
 ├── BLE_scanner_demo/        # Android-демо (см. ниже)
@@ -207,8 +202,6 @@ LaTeX-исходники работы лежат в директории `Тек
 ```bash
 cd "Текст диплома" && latexmk -xelatex main.tex
 ```
-
-Планы переписывания глав и история итераций — в [logs/CHAPTERS_1_2_REWRITE_PLAN.md](logs/CHAPTERS_1_2_REWRITE_PLAN.md) и [logs/CHAPTER_3_REWRITE_PLAN.md](logs/CHAPTER_3_REWRITE_PLAN.md).
 
 ## BLE Scanner Demo
 
