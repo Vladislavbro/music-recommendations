@@ -1,4 +1,4 @@
-\documentclass[14pt, a4paper]{extreport}
+\documentclass[12pt, a4paper]{extreport}
 
 \input{preamble}
 
@@ -8,22 +8,46 @@
 \input{title}
 \clearpage
 \hypersetup{pageanchor=true}
-% \input{abstract}
 
+\phantomsection
 \tableofcontents
+\clearpage
 
-% \input{chapters/introduction}
+\input{abstract}
+\clearpage
+
+\input{chapters/introduction}
+\clearpage
+
+\input{chapters/chapter_market}
+\clearpage
+
+\input{chapters/chapter_service}
+\clearpage
+
 \input{chapters/chapter1}
+\clearpage
+
 \input{chapters/chapter2}
+\clearpage
+
 \input{chapters/chapter3}
-% \input{chapters/conclusion}
+\clearpage
 
-\printbibliography
+\input{chapters/chapter6}
+\clearpage
 
-\listoffigures        % если требуется
-\listoftables         % если требуется
+\input{chapters/conclusion}
 
-% \appendix
+\clearpage
+\printbibliography[heading=bibintoc,title={Список использованных источников}]
+
+% Списки рисунков и таблиц не включены: локальная методика не требует их
+% как обязательные структурные элементы ВКР.
+% \listoffigures
+% \listoftables
+
+% \startappendices
 % \input{appendices/appendix_code}
 % \input{appendices/appendix_tables}
 % \input{appendices/appendix_figures}
