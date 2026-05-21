@@ -1,0 +1,58 @@
+\documentclass[12pt, a4paper]{extreport}
+
+\input{preamble}
+
+\begin{document}
+
+\hypersetup{pageanchor=false}
+\input{title}
+\clearpage
+\hypersetup{pageanchor=true}
+
+\phantomsection
+\tableofcontents
+\clearpage
+
+\input{chapters/abstract}
+\clearpage
+
+\input{chapters/introduction}
+\clearpage
+
+\input{chapters/literature_review}
+\clearpage
+
+\input{chapters/chapter1}
+\clearpage
+
+\input{chapters/chapter2}
+\clearpage
+
+\input{chapters/chapter3}
+\clearpage
+
+\input{chapters/chapter4}
+\clearpage
+
+\input{chapters/chapter5}
+\clearpage
+
+\input{chapters/chapter6}
+\clearpage
+
+\input{chapters/conclusion}
+
+\clearpage
+\printbibliography[heading=bibintoc,title={Список использованных источников}]
+
+% Списки рисунков и таблиц не включены: локальная методика не требует их
+% как обязательные структурные элементы ВКР.
+% \listoffigures
+% \listoftables
+
+% \startappendices
+% \input{appendices/appendix_code}
+% \input{appendices/appendix_tables}
+% \input{appendices/appendix_figures}
+
+\end{document}

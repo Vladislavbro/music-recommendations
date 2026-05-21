@@ -1,0 +1,171 @@
+\usepackage{iftex}
+
+\usepackage{geometry}
+\geometry{
+  a4paper,
+  left=25mm,
+  right=10mm,
+  top=20mm,
+  bottom=20mm
+}
+
+\ifPDFTeX
+  \usepackage[T2A]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage[english,russian]{babel}
+  \usepackage{tempora}
+  \usepackage[scaled=0.9]{couriers}
+\else
+  \usepackage{fontspec}
+  \defaultfontfeatures{Ligatures=TeX}
+  \setmainfont{Times New Roman}
+  \setsansfont{Arial}
+  \setmonofont{Courier New}[Scale=MatchLowercase]
+  \usepackage[english,russian]{babel}
+\fi
+
+\usepackage{csquotes}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\usepackage{mathtools}
+
+\usepackage{graphicx}
+\graphicspath{{graphics/}}
+\usepackage{xurl}
+
+\usepackage{setspace}
+\onehalfspacing
+
+\usepackage{indentfirst}
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{0pt}
+
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\usepackage{etoolbox}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{flafter}
+\usepackage[section]{placeins}
+
+\addto\captionsrussian{\def\figurename{Рисунок}}
+\addto\captionsrussian{\def\tablename{Таблица}}
+\captionsetup{labelsep=endash,font=normalsize}
+\captionsetup[figure]{justification=centering,singlelinecheck=true,position=bottom}
+\captionsetup[table]{justification=raggedright,singlelinecheck=false,position=top}
+\AtBeginEnvironment{figure}{\centering}
+\AtBeginEnvironment{tabular}{\small\singlespacing\setlength{\parindent}{0pt}}
+
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage[flushleft]{threeparttable}
+\usepackage{tablefootnote}
+\usepackage{colortbl}
+\usepackage{tikz}
+\usepackage{pgf}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  columns=fullflexible,
+  breaklines=true,
+  keepspaces=true,
+  showstringspaces=false,
+  xleftmargin=0pt,
+  frame=none
+}
+\AtBeginEnvironment{lstlisting}{\singlespacing\setlength{\parindent}{0pt}}
+
+\usepackage{chngcntr}
+\counterwithin{table}{section}
+\counterwithin{figure}{section}
+\counterwithin{equation}{section}
+
+\usepackage{needspace}
+\usepackage{titlesec}
+\titleformat{\chapter}[block]
+  {\normalfont\bfseries\centering}
+  {\chaptername~\thechapter.}
+  {1em}
+  {}
+\titleformat{name=\chapter,numberless}[block]
+  {\normalfont\bfseries\centering}
+  {}
+  {0pt}
+  {}
+\titleformat{\section}
+  {\Needspace{5\baselineskip}\normalfont\bfseries}
+  {\thesection}
+  {1em}
+  {}
+\titleformat{\subsection}
+  {\Needspace{4\baselineskip}\normalfont\bfseries}
+  {\thesubsection}
+  {1em}
+  {}
+\titleformat{\subsubsection}
+  {\Needspace{3\baselineskip}\normalfont\bfseries}
+  {\thesubsubsection}
+  {1em}
+  {}
+\titlespacing*{\chapter}{0pt}{0pt}{24pt}
+\titlespacing*{\section}{0pt}{18pt}{12pt}
+\titlespacing*{\subsection}{0pt}{14pt}{8pt}
+\titlespacing*{\subsubsection}{0pt}{12pt}{6pt}
+\setcounter{tocdepth}{2}
+\setcounter{secnumdepth}{3}
+
+\makeatletter
+\patchcmd{\@chapter}
+  {\protect\numberline{\thechapter}#1}
+  {\protect\numberline{Глава~\thechapter.}#1}
+  {}{}
+\patchcmd{\l@chapter}
+  {\setlength\@tempdima{1.5em}}
+  {\setlength\@tempdima{4.3em}}
+  {}{}
+\makeatother
+
+\usepackage[
+  hidelinks,
+  bookmarks=false,
+  hypertexnames=true
+]{hyperref}
+
+\emergencystretch=3em
+\tolerance=9999
+\hbadness=10000
+\sloppy
+
+\usepackage[
+  backend=biber,
+  style=gost-numeric,
+  sorting=none,
+  sortcites=true
+]{biblatex}
+\addbibresource{references.bib}
+\AtBeginBibliography{\sloppy}
+
+\addto\captionsrussian{\def\refname{Список использованных источников}}
+\addto\captionsrussian{\def\bibname{Список использованных источников}}
+
+\renewcommand{\theenumi}{\arabic{enumi}}
+\renewcommand{\labelenumi}{\arabic{enumi}}
+\renewcommand{\theenumii}{.\arabic{enumii}}
+\renewcommand{\labelenumii}{\arabic{enumi}.\arabic{enumii}.}
+\renewcommand{\theenumiii}{.\arabic{enumiii}}
+\renewcommand{\labelenumiii}{\arabic{enumi}.\arabic{enumii}.\arabic{enumiii}.}
+
+\newcommand{\startappendices}{%
+  \appendix
+  \renewcommand{\thechapter}{\Asbuk{chapter}}%
+  \renewcommand{\chaptername}{Приложение}%
+}
