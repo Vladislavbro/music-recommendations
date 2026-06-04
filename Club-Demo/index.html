@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Резонанс (демонстрация)</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Концепт Яндекс Музыки для бизнеса</p>
+        <h1>Резонанс (демонстрация)</h1>
+        <p class="subtitle">Динамическое формирование треков-кандидатов под посетителей на основе датасета Yambda 50m.</p>
+      </div>
+      <div class="header-metrics" aria-label="Основные счетчики">
+        <div>
+          <span id="clubOccupancyHeader">0</span>
+          <small>в клубе всего</small>
+        </div>
+        <div>
+          <span id="centralGroupHeader">0</span>
+          <small>в зале</small>
+        </div>
+      </div>
+    </header>
+
+    <div id="errorBanner" class="error-banner" hidden></div>
+
+    <main class="demo-layout">
+      <section class="map-card" aria-label="Карта клуба">
+        <div class="map-toolbar">
+          <div>
+            <h2>Схема клуба</h2>
+            <p id="dataStatus">Вместимость 300 посетителей.</p>
+          </div>
+          <div id="debugInfo" class="debug-info" hidden>
+            viewBox: 0 0 1920 1080 · cursor: -,- · agents: 0
+          </div>
+        </div>
+
+        <div class="map-wrapper" id="mapWrapper">
+          <img
+            src="assets/club_map.svg"
+            class="club-map"
+            id="clubMap"
+            alt="Схема клуба"
+          />
+          <svg
+            class="agents-layer"
+            id="agentsLayer"
+            viewBox="0 0 1920 1080"
+            aria-label="Слой посетителей, BLE-маяков и маршрутов"
+          ></svg>
+          <div id="signalPopup" class="signal-popup" hidden></div>
+        </div>
+
+        <div class="legend" aria-label="Цвета посетителей">
+          <span><i class="legend-dot outside-ble"></i>Вне зоны BLE маяков</span>
+          <span><i class="legend-dot entrance"></i>BLE вход/выход</span>
+          <span><i class="legend-dot bar"></i>BLE бар (Бери Заряд)</span>
+          <span><i class="legend-dot dancefloor"></i>BLE танцпол</span>
+          <span><i class="legend-dot veranda"></i>BLE веранда</span>
+        </div>
+      </section>
+
+      <aside class="side-panel" aria-label="Панель управления и аналитики">
+        <section class="panel-block controls-block">
+          <div class="panel-title-row">
+            <h2>Управление</h2>
+            <button id="startPauseBtn" class="primary-button" type="button">Пауза</button>
+          </div>
+          <button id="resetBtn" class="secondary-button" type="button">Сбросить</button>
+
+          <label class="range-control">
+            <span>Скорость <b id="speedValue">1.00x</b></span>
+            <input id="speedRange" type="range" min="0.25" max="5" step="0.25" value="1" />
+          </label>
+
+        </section>
+
+        <section class="panel-block">
+          <h2>Счетчики</h2>
+          <div class="stats-grid">
+            <div><span id="clubOccupancy">0</span><small>в клубе всего</small></div>
+            <div><span id="centralGroupCount">0</span><small>в зале</small></div>
+            <div><span id="barCount">0</span><small>у бара</small></div>
+            <div><span id="dancefloorCount">0</span><small>на танцполе</small></div>
+            <div><span id="verandaCount">0</span><small>на веранде</small></div>
+            <div><span id="exitedCount">0</span><small>вышли</small></div>
+            <div><span id="totalVisitorsCount">0</span><small>посетило клуб всего</small></div>
+          </div>
+        </section>
+
+        <section class="panel-block recommendations-card">
+          <div class="panel-title-row">
+            <h2>Треки-кандидаты</h2>
+            <span id="recommendationGroupSize" class="pill">0 users</span>
+          </div>
+          <p class="muted-text">Для посетителей в зале</p>
+          <ol id="recommendationsList" class="recommendations-list"></ol>
+        </section>
+      </aside>
+
+      <section class="groups-card" aria-label="Группы пользователей для рекомендаций">
+        <div class="panel-title-row">
+          <div>
+            <h2>Группы посетителей для рекомендательной модели (список "uid")</h2>
+            <p class="muted-text">Определены по силе RSSI сигнала BLE-маяков в клубе, показаны первые 50 пользователей.</p>
+          </div>
+          <span id="visibleAgentsCount" class="pill">0 visible</span>
+        </div>
+
+        <div class="groups-grid">
+          <article class="group-list-card">
+            <h3>Зал</h3>
+            <p id="centralRoomMeta" class="group-meta">0 пользователей</p>
+            <div id="centralRoomList" class="users-list"></div>
+          </article>
+          <article class="group-list-card">
+            <h3>Танцпол</h3>
+            <p id="dancefloorMeta" class="group-meta">0 пользователей</p>
+            <div id="dancefloorList" class="users-list"></div>
+          </article>
+          <article class="group-list-card">
+            <h3>Бар</h3>
+            <p id="barMeta" class="group-meta">0 пользователей</p>
+            <div id="barList" class="users-list"></div>
+          </article>
+          <article class="group-list-card">
+            <h3>Веранда</h3>
+            <p id="verandaMeta" class="group-meta">0 пользователей</p>
+            <div id="verandaList" class="users-list"></div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
