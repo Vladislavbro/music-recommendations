@@ -97,6 +97,15 @@
             <h2>Треки-кандидаты</h2>
             <span id="recommendationGroupSize" class="pill">0 users</span>
           </div>
+          <div class="reco-controls">
+            <label for="methodSelect">Агрегатор</label>
+            <select id="methodSelect">
+              <option value="audio_agree">AudioAGREE (audio)</option>
+              <option value="group_cross_attn">GroupCrossAttn (audio)</option>
+              <option value="avg">AVG (тривиальный)</option>
+            </select>
+            <span id="backendStatus" class="reco-status">…</span>
+          </div>
           <p class="muted-text">Для посетителей в зале</p>
           <ol id="recommendationsList" class="recommendations-list"></ol>
         </section>

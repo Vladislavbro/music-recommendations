@@ -5,6 +5,9 @@ const CONFIG = {
   viewBox: { x: 0, y: 0, width: 1920, height: 1080 },
   userIdsUrl: "data/yambda_50m_unique_user_ids.txt",
   mapUrl: "assets/club_map.svg",
+  backendUrl: "http://127.0.0.1:8001/recommend",
+  recommendationMethod: "audio_agree",
+  recommendationTopN: 10,
   clubCapacity: 300,
   maxVerandaShare: 0.2,
   maxToiletShare: 0.05,
@@ -279,6 +282,8 @@ const dom = {
   visibleAgentsCount: document.getElementById("visibleAgentsCount"),
   recommendationsList: document.getElementById("recommendationsList"),
   recommendationGroupSize: document.getElementById("recommendationGroupSize"),
+  methodSelect: document.getElementById("methodSelect"),
+  backendStatus: document.getElementById("backendStatus"),
   groupLists: {
     centralRoomGroup: document.getElementById("centralRoomList"),
     dancefloorGroup: document.getElementById("dancefloorList"),
@@ -1236,24 +1241,60 @@ function getMockRecommendations(userIds) {
   let seed = hashString(source);
   const tracks = [];
 
-  for (let index = 0; index < 10; index += 1) {
+  for (let index = 0; index < CONFIG.recommendationTopN; index += 1) {
     seed = seededStep(seed + index * 97);
     const trackNumber = 100000 + (seed % 900000);
-    tracks.push(`track_${trackNumber}`);
+    tracks.push({ trackId: String(trackNumber), score: null });
   }
 
   return tracks;
 }
 
 async function fetchRecommendationsFromBackend(userIds) {
-  // later: POST /recommend
-  return getMockRecommendations(userIds);
+  try {
+    const response = await fetch(CONFIG.backendUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_ids: userIds,
+        method: CONFIG.recommendationMethod,
+        top_n: CONFIG.recommendationTopN
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const payload = await response.json();
+    setBackendStatus(true, payload.method);
+    return (payload.tracks || []).map((track) => ({
+      trackId: String(track.track_id),
+      score: typeof track.score === "number" ? track.score : null
+    }));
+  } catch (error) {
+    setBackendStatus(false);
+    return getMockRecommendations(userIds);
+  }
+}
+
+function setBackendStatus(online, method) {
+  if (!dom.backendStatus) {
+    return;
+  }
+  if (online) {
+    dom.backendStatus.textContent = `backend: ${method || CONFIG.recommendationMethod}`;
+    dom.backendStatus.classList.remove("offline");
+  } else {
+    dom.backendStatus.textContent = "backend offline · mock";
+    dom.backendStatus.classList.add("offline");
+  }
 }
 
 async function updateRecommendations(force = false) {
   const groups = getRecommendationGroups();
   const userIds = groups.centralRoomGroup;
-  const key = userIds.slice().sort().join("|");
+  const key = `${CONFIG.recommendationMethod}::${userIds.slice().sort().join("|")}`;
 
   if (!force && key === state.lastRecommendationKey && state.recommendations.length > 0) {
     return;
@@ -1441,8 +1482,19 @@ function positionSignalPopup(agent) {
 
 function renderRecommendations(groupSize) {
   dom.recommendationGroupSize.textContent = `${groupSize} uid`;
+
+  if (state.recommendations.length === 0) {
+    dom.recommendationsList.innerHTML = `<li class="empty-state">Группа в зале пуста</li>`;
+    return;
+  }
+
   dom.recommendationsList.innerHTML = state.recommendations
-    .map((trackId) => `<li>${escapeHtml(trackId)}</li>`)
+    .map((track) => {
+      const score = track.score === null || track.score === undefined
+        ? ""
+        : `<span class="reco-score">${track.score.toFixed(3)}</span>`;
+      return `<li><span class="reco-track">track_${escapeHtml(track.trackId)}</span>${score}</li>`;
+    })
     .join("");
 }
 
@@ -1485,6 +1537,14 @@ function setupEventListeners() {
   if (dom.debugToggle) {
     dom.debugToggle.addEventListener("change", () => {
       state.debug = dom.debugToggle.checked;
+    });
+  }
+
+  if (dom.methodSelect) {
+    dom.methodSelect.value = CONFIG.recommendationMethod;
+    dom.methodSelect.addEventListener("change", () => {
+      CONFIG.recommendationMethod = dom.methodSelect.value;
+      updateRecommendations(true).then(() => renderUi());
     });
   }
 

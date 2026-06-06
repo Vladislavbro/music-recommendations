@@ -421,6 +421,59 @@ input[type="range"] {
   color: var(--yellow);
 }
 
+.recommendations-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.reco-track {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reco-score {
+  color: var(--muted, #9aa);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.reco-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 4px;
+  font-size: 12px;
+}
+
+.reco-controls label {
+  color: var(--muted, #9aa);
+}
+
+.reco-controls select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid rgba(255, 212, 71, 0.35);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.reco-status {
+  flex: none;
+  font-size: 10px;
+  color: #6fcf97;
+  white-space: nowrap;
+}
+
+.reco-status.offline {
+  color: #e0a44b;
+}
+
 .groups-card {
   grid-column: 1;
   grid-row: 2;

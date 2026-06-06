@@ -1,0 +1,10 @@
+# Club-Demo backend (CPU-only). Установка torch CPU:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements.txt
+torch>=2.3
+fastapi>=0.110
+uvicorn>=0.29
+pydantic>=2.0
+pandas>=2.2
+numpy>=1.26
+pyarrow>=15
