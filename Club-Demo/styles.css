@@ -709,3 +709,63 @@ input[type="range"] {
     padding: 10px;
   }
 }
+
+/* Live-метрики качества (Phase E) */
+.metrics-legend {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.metrics-legend li {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.metrics-legend li b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.metrics-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 18px 0 6px;
+  font-size: 13px;
+}
+
+.metrics-table th,
+.metrics-table td {
+  text-align: right;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+
+.metrics-table th:first-child,
+.metrics-table td:first-child {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.metrics-table thead th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.metrics-table tbody td {
+  color: var(--text);
+}
+
+.metrics-table td.metric-primary {
+  color: var(--yellow);
+  font-weight: 700;
+}

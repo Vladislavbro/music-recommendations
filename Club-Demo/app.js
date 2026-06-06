@@ -6,8 +6,11 @@ const CONFIG = {
   userIdsUrl: "data/yambda_50m_unique_user_ids.txt",
   mapUrl: "assets/club_map.svg",
   backendUrl: "http://127.0.0.1:8001/recommend",
+  metricsUrl: "http://127.0.0.1:8001/metrics",
+  resetMetricsUrl: "http://127.0.0.1:8001/reset_metrics",
   recommendationMethod: "audio_agree",
   recommendationTopN: 10,
+  metricsIntervalMs: 5000,
   clubCapacity: 300,
   maxVerandaShare: 0.2,
   maxToiletShare: 0.05,
@@ -284,6 +287,13 @@ const dom = {
   recommendationGroupSize: document.getElementById("recommendationGroupSize"),
   methodSelect: document.getElementById("methodSelect"),
   backendStatus: document.getElementById("backendStatus"),
+  metricsPanel: document.getElementById("metricsPanel"),
+  metricsStatus: document.getElementById("metricsStatus"),
+  metricsNdcgAudio: document.getElementById("metricsNdcgAudio"),
+  metricsNdcgAvg: document.getElementById("metricsNdcgAvg"),
+  metricsCovAudio: document.getElementById("metricsCovAudio"),
+  metricsCovAvg: document.getElementById("metricsCovAvg"),
+  metricsSampleN: document.getElementById("metricsSampleN"),
   groupLists: {
     centralRoomGroup: document.getElementById("centralRoomList"),
     dancefloorGroup: document.getElementById("dancefloorList"),
@@ -316,6 +326,8 @@ const state = {
   lastRecommendationAt: 0,
   lastRecommendationKey: "",
   recommendations: [],
+  lastMetricsAt: 0,
+  metrics: null,
   exitedCount: 0,
   visitedClubCount: 0,
   cursor: null,
@@ -1291,6 +1303,42 @@ function setBackendStatus(online, method) {
   }
 }
 
+// Live-метрики качества (NDCG@10 + coverage@10): AudioAGREE vs AVG на реальных
+// test-listens YAMBDA. Считаем по непересекающимся зонам-толпам (танцпол/бар/веранда)
+// — зал = танцпол+бар, дублировать не нужно. Backend держит running-average по сессии.
+async function fetchMetricsFromBackend() {
+  const groups = getRecommendationGroups();
+  const payloadGroups = [groups.dancefloorGroup, groups.barGroup, groups.verandaGroup]
+    .filter((g) => g.length > 0);
+
+  if (payloadGroups.length === 0) {
+    return;
+  }
+
+  try {
+    const response = await fetch(CONFIG.metricsUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groups: payloadGroups })
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    state.metrics = await response.json();
+  } catch (error) {
+    state.metrics = null;
+  }
+}
+
+async function resetMetrics() {
+  state.metrics = null;
+  try {
+    await fetch(CONFIG.resetMetricsUrl, { method: "POST" });
+  } catch (error) {
+    // backend offline — нечего сбрасывать
+  }
+}
+
 async function updateRecommendations(force = false) {
   const groups = getRecommendationGroups();
   const userIds = groups.centralRoomGroup;
@@ -1414,6 +1462,7 @@ function renderUi() {
   renderGroupList("barGroup");
   renderGroupList("verandaGroup");
   renderRecommendations(groups.centralRoomGroup.length);
+  renderMetrics();
   renderDebugInfo(visibleAgentsCount);
 
   if (state.userIdsDepleted) {
@@ -1484,7 +1533,7 @@ function renderRecommendations(groupSize) {
   dom.recommendationGroupSize.textContent = `${groupSize} uid`;
 
   if (state.recommendations.length === 0) {
-    dom.recommendationsList.innerHTML = `<li class="empty-state">Группа в зале пуста</li>`;
+    dom.recommendationsList.innerHTML = `<li class="empty-state">В зале пусто</li>`;
     return;
   }
 
@@ -1496,6 +1545,48 @@ function renderRecommendations(groupSize) {
       return `<li><span class="reco-track">track_${escapeHtml(track.trackId)}</span>${score}</li>`;
     })
     .join("");
+}
+
+function renderMetrics() {
+  if (!dom.metricsPanel) {
+    return;
+  }
+
+  const put = (el, text) => {
+    if (el) {
+      el.textContent = text;
+    }
+  };
+  const fmt = (v) => (v === null || v === undefined ? "—" : v.toFixed(4));
+  const m = state.metrics;
+
+  if (!m || m.enabled === false) {
+    if (dom.metricsStatus) {
+      dom.metricsStatus.textContent = m && m.enabled === false
+        ? "нет ground-truth"
+        : "ожидание данных…";
+      dom.metricsStatus.classList.add("offline");
+    }
+    put(dom.metricsNdcgAudio, "—");
+    put(dom.metricsNdcgAvg, "—");
+    put(dom.metricsCovAudio, "—");
+    put(dom.metricsCovAvg, "—");
+    put(dom.metricsSampleN, "0 групп в усреднении");
+    return;
+  }
+
+  const audio = m.session.audio_agree;
+  const avg = m.session.avg;
+
+  if (dom.metricsStatus) {
+    dom.metricsStatus.textContent = `live · среднее по сессии · @${m.k}`;
+    dom.metricsStatus.classList.remove("offline");
+  }
+  put(dom.metricsNdcgAudio, fmt(audio.ndcg));
+  put(dom.metricsNdcgAvg, fmt(avg.ndcg));
+  put(dom.metricsCovAudio, fmt(audio.coverage));
+  put(dom.metricsCovAvg, fmt(avg.coverage));
+  put(dom.metricsSampleN, `${audio.n} групп в усреднении`);
 }
 
 function renderDebugInfo(visibleAgentsCount) {
@@ -1597,6 +1688,8 @@ function resetSimulation() {
   state.lastRecommendationAt = 0;
   state.lastRecommendationKey = "";
   state.recommendations = [];
+  state.lastMetricsAt = 0;
+  state.metrics = null;
   state.exitedCount = 0;
   state.visitedClubCount = 0;
   state.speedMultiplier = Number(dom.speedRange.value);
@@ -1604,6 +1697,7 @@ function resetSimulation() {
   fillInitialQueue();
   updateBleSignals(true);
   updateRecommendations(true);
+  resetMetrics();
   renderMap();
   renderUi();
 }
@@ -1652,6 +1746,12 @@ function loop(timestamp) {
   if (timestamp - state.lastRecommendationAt >= CONFIG.recommendationsIntervalMs) {
     updateRecommendations();
     state.lastRecommendationAt = timestamp;
+  }
+
+  // На паузе метрики не пересчитываем — running-average замораживается.
+  if (state.running && timestamp - state.lastMetricsAt >= CONFIG.metricsIntervalMs) {
+    fetchMetricsFromBackend();
+    state.lastMetricsAt = timestamp;
   }
 
   requestAnimationFrame(loop);

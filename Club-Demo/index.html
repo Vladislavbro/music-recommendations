@@ -104,10 +104,40 @@
               <option value="group_cross_attn">GroupCrossAttn (audio)</option>
               <option value="avg">AVG (тривиальный)</option>
             </select>
-            <span id="backendStatus" class="reco-status">…</span>
           </div>
           <p class="muted-text">Для посетителей в зале</p>
           <ol id="recommendationsList" class="recommendations-list"></ol>
+        </section>
+
+        <section class="panel-block metrics-card" id="metricsPanel">
+          <div class="panel-title-row">
+            <h2>Качество (live)</h2>
+          </div>
+          <p class="muted-text">
+            Среднее по зонам клуба на реальных (held-out) прослушиваниях YAMBDA.
+          </p>
+          <ul class="metrics-legend">
+            <li><b>NDCG@10</b> — насколько верх списка совпал с тем, что группа реально слушала (выше = точнее).</li>
+            <li><b>coverage@10</b> — какой доле участников топ-10 угодил хотя бы одним треком (выше = никого не забыли).</li>
+          </ul>
+          <table class="metrics-table">
+            <thead>
+              <tr><th>Метрика</th><th>AudioAGREE</th><th>AVG</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>NDCG@10</td>
+                <td id="metricsNdcgAudio" class="metric-primary">—</td>
+                <td id="metricsNdcgAvg">—</td>
+              </tr>
+              <tr>
+                <td>coverage@10</td>
+                <td id="metricsCovAudio" class="metric-primary">—</td>
+                <td id="metricsCovAvg">—</td>
+              </tr>
+            </tbody>
+          </table>
+          <p id="metricsSampleN" class="muted-text">0 групп в усреднении</p>
         </section>
       </aside>
 
