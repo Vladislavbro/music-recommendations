@@ -293,6 +293,10 @@ const dom = {
   metricsNdcgAvg: document.getElementById("metricsNdcgAvg"),
   metricsCovAudio: document.getElementById("metricsCovAudio"),
   metricsCovAvg: document.getElementById("metricsCovAvg"),
+  metricsJainAudio: document.getElementById("metricsJainAudio"),
+  metricsJainAvg: document.getElementById("metricsJainAvg"),
+  metricsDisAudio: document.getElementById("metricsDisAudio"),
+  metricsDisAvg: document.getElementById("metricsDisAvg"),
   metricsSampleN: document.getElementById("metricsSampleN"),
   groupLists: {
     centralRoomGroup: document.getElementById("centralRoomList"),
@@ -1571,6 +1575,10 @@ function renderMetrics() {
     put(dom.metricsNdcgAvg, "—");
     put(dom.metricsCovAudio, "—");
     put(dom.metricsCovAvg, "—");
+    put(dom.metricsJainAudio, "—");
+    put(dom.metricsJainAvg, "—");
+    put(dom.metricsDisAudio, "—");
+    put(dom.metricsDisAvg, "—");
     put(dom.metricsSampleN, "0 групп в усреднении");
     return;
   }
@@ -1586,6 +1594,10 @@ function renderMetrics() {
   put(dom.metricsNdcgAvg, fmt(avg.ndcg));
   put(dom.metricsCovAudio, fmt(audio.coverage));
   put(dom.metricsCovAvg, fmt(avg.coverage));
+  put(dom.metricsJainAudio, fmt(audio.jain));
+  put(dom.metricsJainAvg, fmt(avg.jain));
+  put(dom.metricsDisAudio, fmt(audio.disagreement));
+  put(dom.metricsDisAvg, fmt(avg.disagreement));
   put(dom.metricsSampleN, `${audio.n} групп в усреднении`);
 }
 

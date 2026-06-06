@@ -117,8 +117,10 @@
             Среднее по зонам клуба на реальных (held-out) прослушиваниях YAMBDA.
           </p>
           <ul class="metrics-legend">
-            <li><b>NDCG@10</b> — насколько верх списка совпал с тем, что группа реально слушала (выше = точнее).</li>
-            <li><b>coverage@10</b> — какой доле участников топ-10 угодил хотя бы одним треком (выше = никого не забыли).</li>
+            <li><b>NDCG@10</b> — насколько точно верх списка попал в реальные прослушивания группы: совпадения на верхних позициях весят больше (выше - лучше).</li>
+            <li><b>coverage@10</b> — какой доле участников топ-10 угодил хотя бы одним «своим» треком: считаем долю людей, у кого есть попадание (выше - лучше).</li>
+            <li><b>Jain</b> — равномерность попадания личных треков в подборку по участникам: индекс Джейна по их личным NDCG, 1 = всем поровну (выше - лучше).</li>
+            <li><b>disagreement</b> — насколько неравномерно подборка попала в личные треки участников по NDCG (ниже - лучше).</li>
           </ul>
           <table class="metrics-table">
             <thead>
@@ -134,6 +136,16 @@
                 <td>coverage@10</td>
                 <td id="metricsCovAudio" class="metric-primary">—</td>
                 <td id="metricsCovAvg">—</td>
+              </tr>
+              <tr>
+                <td>Jain</td>
+                <td id="metricsJainAudio" class="metric-primary">—</td>
+                <td id="metricsJainAvg">—</td>
+              </tr>
+              <tr>
+                <td>disagreement</td>
+                <td id="metricsDisAudio" class="metric-primary">—</td>
+                <td id="metricsDisAvg">—</td>
               </tr>
             </tbody>
           </table>

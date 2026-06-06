@@ -57,6 +57,10 @@ DEFAULT_METHOD = "audio_agree"
 DEFAULT_TOP_N = 10
 METRICS_K = 10                       # NDCG@K и coverage@K для live-панели
 METRICS_METHODS = ("audio_agree", "avg")  # живой контраст H1: audio-aware vs тривиальный
+# Ключи метрик, аккумулируемые в session running-average. ndcg/coverage — старые
+# (group-level union-таргет); jain/disagreement — per-member→aggregate
+# (канон grouprec: считаем satisfaction каждого члена, потом сворачиваем по группе).
+METRIC_KEYS = ("ndcg", "coverage", "jain", "disagreement")
 DEVICE = torch.device("cpu")
 
 
@@ -77,10 +81,10 @@ STORE = Store()
 
 
 class SessionMetrics:
-    """Running-average NDCG@K и coverage@K по сессии (per-method).
+    """Running-average по сессии для всех METRIC_KEYS (per-method).
 
     Накапливаем сумму и счётчик отдельно на каждый метод из METRICS_METHODS.
-    Усредняем только по группам с непустым `targets` (NDCG не определён иначе).
+    Усредняем только по группам с непустым `targets` (метрики не определены иначе).
     Сбрасывается вместе со сбросом симуляции (`POST /reset_metrics`).
     """
 
@@ -89,24 +93,23 @@ class SessionMetrics:
 
     def reset(self) -> None:
         self._acc = {
-            m: {"n": 0, "sum_ndcg": 0.0, "sum_cov": 0.0} for m in METRICS_METHODS
+            m: {"n": 0, "sums": {k: 0.0 for k in METRIC_KEYS}} for m in METRICS_METHODS
         }
 
-    def update(self, method: str, ndcg: float, coverage: float) -> None:
+    def update(self, method: str, values: dict) -> None:
         a = self._acc[method]
         a["n"] += 1
-        a["sum_ndcg"] += ndcg
-        a["sum_cov"] += coverage
+        for k in METRIC_KEYS:
+            a["sums"][k] += values[k]
 
     def snapshot(self) -> dict:
         out = {}
         for m, a in self._acc.items():
             n = a["n"]
-            out[m] = {
-                "n": n,
-                "ndcg": round(a["sum_ndcg"] / n, 4) if n else None,
-                "coverage": round(a["sum_cov"] / n, 4) if n else None,
-            }
+            row = {"n": n}
+            for k in METRIC_KEYS:
+                row[k] = round(a["sums"][k] / n, 4) if n else None
+            out[m] = row
         return out
 
 
@@ -249,6 +252,19 @@ def _topk_indices(scores: np.ndarray, k: int) -> np.ndarray:
     return idx[np.argsort(-scores[idx])]
 
 
+def _jain(xs: list[float]) -> float:
+    """Jain's fairness index по per-member satisfaction: (Σx)² / (n·Σx²) ∈ (0,1].
+
+    1.0 = всех обслужили одинаково (включая вырожденный all-zero — равная «нищета»),
+    →1/n = всё ушло одному члену. Выше = справедливее.
+    """
+    s = float(sum(xs))
+    s2 = float(sum(v * v for v in xs))
+    if s2 <= 0.0:
+        return 1.0
+    return (s * s) / (len(xs) * s2)
+
+
 def compute_group_metrics(members: list[int]) -> Optional[dict]:
     """NDCG@K и coverage@K для METRICS_METHODS на одной группе.
 
@@ -260,14 +276,22 @@ def compute_group_metrics(members: list[int]) -> Optional[dict]:
     из top-K юзера попал в рекомендованные top-K. Иллюстрирует вырождение
     (рек выдаёт «фаворита одного гостя» → coverage низкий).
 
-    Returns `{n_members, n_candidates, n_targets, methods: {m: {ndcg, coverage}}}`
+    Tier-1 (per-member→aggregate, канон grouprec). Сначала считаем NDCG@K каждого
+    члена против ЕГО ЛИЧНЫХ test-listens (а не union), потом сворачиваем по группе:
+        jain          — Jain's index по per-member NDCG (1 = равномерно, выше=честнее);
+        disagreement  — std per-member NDCG (разброс сытости, ниже = лучше).
+    Оцениваем только членов с непустым личным rel-set ∩ C_G (иначе satisfaction
+    не определён). Группа доходит сюда ⇒ таких членов ≥ 1.
+
+    Returns `{n_members, n_candidates, n_targets, n_eval_members,
+    methods: {m: {ndcg, coverage, jain, disagreement}}}`
     или None, если метрику посчитать нельзя.
     """
     if not members:
         return None
     candidates, per_user = _group_inputs(members)
 
-    # targets = union(test-listens) ∩ candidates
+    # targets = union(test-listens) ∩ candidates (для group-level union-NDCG)
     tgt_parts = [
         STORE.test_targets[u] for u in members if u in STORE.test_targets and len(STORE.test_targets[u])
     ]
@@ -279,10 +303,23 @@ def compute_group_metrics(members: list[int]) -> Optional[dict]:
         return None
     rel_set = set(int(t) for t in targets)
 
+    # Личные rel-set каждого члена (для per-member→aggregate). Члены без
+    # достижимых личных таргетов из агрегации исключаются (satisfaction не определён).
+    cand_set = set(int(c) for c in candidates)
+    member_rel_sets: list[set] = []
+    for uid in members:
+        t = STORE.test_targets.get(uid)
+        if t is None or len(t) == 0:
+            continue
+        rs = cand_set.intersection(int(i) for i in t)
+        if rs:
+            member_rel_sets.append(rs)
+
     out: dict = {
         "n_members": len(members),
         "n_candidates": int(candidates.shape[0]),
         "n_targets": int(targets.size),
+        "n_eval_members": len(member_rel_sets),
         "methods": {},
     }
     for method in METRICS_METHODS:
@@ -299,9 +336,16 @@ def compute_group_metrics(members: list[int]) -> Optional[dict]:
                 represented += 1
         coverage = represented / len(members)
 
+        # per-member NDCG@K по тому же рек-рангу, но против личных таргетов члена
+        pm = [ndcg_from_ranking(ranked_items, rs, METRICS_K) for rs in member_rel_sets]
+        jain = _jain(pm)
+        disagreement = float(np.std(pm)) if len(pm) > 1 else 0.0
+
         out["methods"][method] = {
             "ndcg": round(float(ndcg), 4),
             "coverage": round(float(coverage), 4),
+            "jain": round(float(jain), 4),
+            "disagreement": round(float(disagreement), 4),
         }
     return out
 
@@ -365,7 +409,7 @@ def metrics_endpoint(req: MetricsRequest) -> dict:
         return {"k": METRICS_K, "methods": list(METRICS_METHODS),
                 "enabled": False, "session": METRICS.snapshot(), "batch": None}
 
-    batch_acc = {m: {"n": 0, "sum_ndcg": 0.0, "sum_cov": 0.0} for m in METRICS_METHODS}
+    batch_acc = {m: {"n": 0, "sums": {k: 0.0 for k in METRIC_KEYS}} for m in METRICS_METHODS}
     n_groups_counted = 0
     for raw_group in req.groups:
         members = _parse_members(raw_group)
@@ -374,20 +418,18 @@ def metrics_endpoint(req: MetricsRequest) -> dict:
             continue
         n_groups_counted += 1
         for m, vals in res["methods"].items():
-            METRICS.update(m, vals["ndcg"], vals["coverage"])
+            METRICS.update(m, vals)
             b = batch_acc[m]
             b["n"] += 1
-            b["sum_ndcg"] += vals["ndcg"]
-            b["sum_cov"] += vals["coverage"]
+            for k in METRIC_KEYS:
+                b["sums"][k] += vals[k]
 
-    batch = {
-        m: {
-            "n": b["n"],
-            "ndcg": round(b["sum_ndcg"] / b["n"], 4) if b["n"] else None,
-            "coverage": round(b["sum_cov"] / b["n"], 4) if b["n"] else None,
-        }
-        for m, b in batch_acc.items()
-    }
+    batch = {}
+    for m, b in batch_acc.items():
+        row = {"n": b["n"]}
+        for k in METRIC_KEYS:
+            row[k] = round(b["sums"][k] / b["n"], 4) if b["n"] else None
+        batch[m] = row
     return {
         "k": METRICS_K,
         "methods": list(METRICS_METHODS),
