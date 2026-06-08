@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Пайплайн групповых рекомендаций — внутренний explainer</title>
+<link rel="stylesheet" href="katex/katex.min.css">
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --ink: #1c2230;
+    --muted: #6b7480;
+    --line: #e3e7ed;
+    --accent: #3b6ef0;
+    --accent-soft: #eaf0ff;
+    --avg: #8a93a3;
+    --aa: #2f9e7d;
+    --warn: #d9822b;
+    --code: #f0f2f6;
+    --good: #2f9e7d;
+    --bad: #d24b4b;
+    --radius: 14px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.55; font-size: 15px;
+  }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 32px 22px 120px; }
+  header.top { margin-bottom: 28px; }
+  header.top h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  header.top p { color: var(--muted); margin: 0; max-width: 70ch; }
+  .stagebar {
+    display: flex; flex-wrap: wrap; gap: 6px; margin: 22px 0 8px; font-size: 12.5px;
+  }
+  .stagebar span {
+    background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+    padding: 4px 11px; color: var(--muted);
+  }
+  .stagebar span b { color: var(--accent); font-weight: 600; }
+  .stagebar .arr { border: none; background: none; color: var(--line); padding: 4px 0; }
+
+  details.stage {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    margin: 16px 0; overflow: hidden;
+  }
+  details.stage > summary {
+    list-style: none; cursor: pointer; padding: 18px 22px; display: flex; align-items: baseline; gap: 12px;
+  }
+  details.stage > summary::-webkit-details-marker { display: none; }
+  details.stage > summary::marker { content: ""; }
+  .num {
+    flex: none; width: 30px; height: 30px; border-radius: 9px; background: var(--accent-soft);
+    color: var(--accent); font-weight: 700; display: grid; place-items: center; font-size: 14px;
+    align-self: center;
+  }
+  summary h2 { font-size: 18px; margin: 0; flex: 1; }
+  summary .sub { color: var(--muted); font-size: 13px; font-weight: 400; display: block; margin-top: 2px; }
+  summary .chev { color: var(--muted); transition: transform .15s; align-self: center; }
+  details[open] > summary .chev { transform: rotate(90deg); }
+  .body { padding: 2px 24px 24px; }
+  .body.indent { padding-left: 66px; }
+
+  h3 { font-size: 15px; margin: 22px 0 8px; }
+  p { margin: 9px 0; }
+  .muted { color: var(--muted); }
+  code, .k { font-family: var(--mono); font-size: 12.5px; background: var(--code); padding: 1px 6px; border-radius: 6px; }
+  .codepath { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  /* ----- формулы (KaTeX) ----- */
+  .formula {
+    background: var(--code);
+    padding: 12px 16px; border-radius: 10px; margin: 10px 0; overflow-x: auto;
+    border: 1px solid var(--line);
+  }
+  .formula .katex-display { margin: 0; }
+  .formula.label { position: relative; }
+  .formula .lead {
+    display: block; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 6px;
+  }
+  .katex { font-size: 1.04em; }
+  .ki { white-space: nowrap; }
+
+  .note {
+    border-left: 3px solid var(--accent); background: var(--accent-soft);
+    padding: 10px 14px; border-radius: 0 10px 10px 0; margin: 12px 0; font-size: 13.5px;
+  }
+  .note.warn { border-color: var(--warn); background: #fdf3e7; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } .body.indent { padding-left: 24px; } }
+
+  .stat { display: flex; gap: 18px; flex-wrap: wrap; margin: 12px 0; }
+  .stat .cell { background: var(--code); border-radius: 10px; padding: 10px 16px; min-width: 110px; }
+  .stat .cell b { font-size: 21px; display: block; letter-spacing: -0.01em; }
+  .stat .cell span { font-size: 12px; color: var(--muted); }
+
+  table.tbl { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13.5px; }
+  table.tbl th, table.tbl td { border: 1px solid var(--line); padding: 7px 10px; text-align: center; }
+  table.tbl th { background: var(--code); font-weight: 600; }
+  table.tbl td.lbl, table.tbl th.lbl { text-align: left; font-weight: 600; background: #fafbfc; }
+  table.tbl tr.hi td { background: var(--accent-soft); }
+  .zero { color: #c2c8d2; }
+
+  .card-mini {
+    border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: #fcfdff;
+  }
+  .card-mini h4 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .card-mini .what { font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .dot.avg { background: var(--avg); }
+  .dot.aa { background: var(--aa); }
+
+  .vec { display: inline-flex; gap: 2px; vertical-align: middle; margin: 0 2px; }
+  .vec i { width: 9px; height: 16px; border-radius: 2px; display: inline-block; }
+
+  .transformer { display: flex; flex-direction: column; gap: 6px; align-items: stretch; margin: 14px 0; }
+  .tblock { border: 1px solid var(--line); border-radius: 9px; padding: 9px 13px; background: #fcfdff; font-size: 13px; }
+  .tblock b { font-size: 13px; }
+  .tflow { text-align: center; color: var(--line); font-size: 16px; line-height: 1; }
+  .tblock.attn { background: var(--accent-soft); border-color: #cfdcff; }
+
+  .legend { display: flex; flex-direction: column; gap: 9px; font-size: 13.5px; margin-top: 8px; }
+  .legend div { display: flex; align-items: baseline; gap: 12px; }
+  .legend .sym { min-width: 72px; flex: none; text-align: right; }
+
+  .rankrow { display: flex; gap: 16px; flex-wrap: wrap; }
+  .rankcol { flex: 1; min-width: 220px; }
+  ol.rank { list-style: none; padding: 0; margin: 8px 0; counter-reset: r; }
+  ol.rank li {
+    counter-increment: r; display: flex; align-items: center; gap: 10px;
+    border: 1px solid var(--line); border-radius: 9px; padding: 7px 12px; margin: 5px 0; background: #fff;
+  }
+  ol.rank li::before { content: counter(r); font-family: var(--mono); color: var(--muted); width: 16px; }
+  ol.rank li .sc { margin-left: auto; font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+  ol.rank li.moved { border-color: var(--warn); background: #fdf6ec; }
+  li .badge { font-size: 11px; color: var(--warn); border: 1px solid var(--warn); border-radius: 6px; padding: 0 5px; }
+
+  .controls { background: var(--code); border-radius: 10px; padding: 12px 16px; margin: 14px 0; font-size: 13px; }
+  .controls label { display: inline-flex; align-items: center; gap: 6px; }
+  input[type=number] { width: 60px; font-family: var(--mono); padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+  button.reset { font: inherit; font-size: 12.5px; border: 1px solid var(--line); background: #fff; border-radius: 7px; padding: 4px 12px; cursor: pointer; }
+
+  .metricbox { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin: 12px 0; }
+  .metricbox h4 { margin: 0 0 4px; font-size: 14.5px; }
+  .metricbox .tag { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; margin-left: 8px; }
+  .tag.group { background: var(--accent-soft); color: var(--accent); }
+  .tag.member { background: #eaf7f1; color: var(--aa); }
+  .cmp { font-family: var(--mono); font-size: 13px; }
+  .cmp .avgv { color: var(--avg); }
+  .cmp .aav { color: var(--aa); font-weight: 600; }
+  footer { color: var(--muted); font-size: 12.5px; margin-top: 40px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>Групповые рекомендации на YAMBDA — как устроен весь пайплайн</h1>
+  <p>Внутренний explainer для команды. Сквозной пример (группа из двух гостей — Аня и Боря, 4 трека) проходит через все стадии: от данных → обучение трансформера → таблица скоров → два агрегатора → метрики качества. Числа в стадиях 3–5 живые — можно править скоры и смотреть, как меняется всё ниже.</p>
+  <div class="stagebar">
+    <span><b>1</b> Данные</span><span class="arr">→</span>
+    <span><b>2</b> SASRec (обучение)</span><span class="arr">→</span>
+    <span><b>3</b> Таблица скоров</span><span class="arr">→</span>
+    <span><b>4</b> Агрегаторы</span><span class="arr">→</span>
+    <span><b>5</b> Метрики</span>
+  </div>
+</header>
+
+<!-- ============ Словарь ============ -->
+<details class="stage" open>
+  <summary><span class="num">∑</span><h2>Словарь обозначений<span class="sub">единый для всего документа</span></h2><span class="chev">▶</span></summary>
+  <div class="body">
+    <div class="legend">
+      <div><span class="sym ki" data-tex="s_{u,i}"></span><span>персональный скор трека <i>i</i> для юзера <i>u</i> от SASRec (из кэша; если <i>i</i> ∉ top-K юзера → 0.0)</span></div>
+      <div><span class="sym ki" data-tex="a_i"></span><span>аудиоэмбеддинг трека, вектор <span class="ki" data-tex="\mathbb{R}^{128}"></span></span></div>
+      <div><span class="sym ki" data-tex="\bar a_u"></span><span>аудиопрофиль юзера = среднее <span class="ki" data-tex="a_i"></span> по его истории</span></div>
+      <div><span class="sym ki" data-tex="C_G"></span><span>кандидаты группы = объединение top-K всех членов</span></div>
+      <div><span class="sym ki" data-tex="\alpha_{u,i}"></span><span>вес внимания юзера <i>u</i> к треку <i>i</i> (AudioAGREE)</span></div>
+      <div><span class="sym ki" data-tex="s_G(i)"></span><span>итоговый групповой скор трека <i>i</i></span></div>
+    </div>
+  </div>
+</details>
+
+<!-- ============ 1. ДАННЫЕ ============ -->
+<details class="stage" open>
+  <summary><span class="num">1</span><h2>Данные: YAMBDA-50m<span class="sub">с чем реально работаем + аудио-ветка</span></h2><span class="chev">▶</span></summary>
+  <div class="body indent">
+    <p>YAMBDA — крупный датасет музыкальных взаимодействий от Яндекса. Мы используем flavor <code>50m</code>. Один обучающий сэмпл — <b>хронологическая последовательность прослушиваний одного юзера</b> (задача: предсказать следующий трек).</p>
+    <div class="stat">
+      <div class="cell"><b>≈ 50 млн</b><span>событий (прослушиваний) — flavor 50m</span></div>
+      <div class="cell"><b>276 305</b><span>треков в каталоге (с аудио)</span></div>
+      <div class="cell"><b>9 170</b><span>пользователей</span></div>
+      <div class="cell"><b>128</b><span>размерность аудио d<sub>a</sub></span></div>
+      <div class="cell"><b>≤ 200</b><span>длина истории (обрезка)</span></div>
+    </div>
+    <h3>Две параллельные ветки признаков</h3>
+    <div class="grid2">
+      <div class="card-mini">
+        <h4>① Поведенческая</h4>
+        <p class="muted" style="font-size:13px;margin:0">Последовательность ID-треков из истории → идёт в SASRec (стадия 2).</p>
+      </div>
+      <div class="card-mini">
+        <h4>② Аудио</h4>
+        <p style="font-size:13px;margin:0 0 6px" class="muted">У каждого трека вектор <span class="vec" id="vec-item"></span> = <span class="ki" data-tex="a_i"></span>. Профиль юзера <span class="vec" id="vec-user"></span> = <span class="ki" data-tex="\bar a_u"></span> (среднее по истории). Идёт в audio-агрегатор (стадия 4).</p>
+      </div>
+    </div>
+  </div>
+</details>
+
+<!-- ============ 2. SASRec ============ -->
+<details class="stage" open>
+  <summary><span class="num">2</span><h2>SASRec: обучаемый per-user скорер<span class="sub">архитектура · loss · заморозка</span></h2><span class="chev">▶</span></summary>
+  <div class="body indent">
+    <p>SASRec (Self-Attentive Sequential Recommendation) — трансформер, который по истории юзера предсказывает, какой трек он послушает следующим. На выходе — скор по каждому треку каталога. Это <b>персональная</b> модель: про группы она ничего не знает.</p>
+
+    <h3>Архитектура</h3>
+    <div class="transformer">
+      <div class="tblock">Вход: последовательность ID-треков <code>[t₃, t₇, t₁, t₉, …]</code> (последние ≤200)</div>
+      <div class="tflow">↓</div>
+      <div class="tblock"><b>Item-эмбеддинги + позиционные эмбеддинги</b> — каждый трек → вектор размерности 64, плюс позиция в последовательности</div>
+      <div class="tflow">↓</div>
+      <div class="tblock attn"><b>2 × Transformer-блок</b> (causal self-attention, 2 головы):<br>
+        &nbsp;&nbsp;• Self-Attention с <b>causal-маской</b> — позиция видит только прошлое (Q·Kᵀ, softmax, ·V)<br>
+        &nbsp;&nbsp;• Feed-Forward + residual + LayerNorm</div>
+      <div class="tflow">↓</div>
+      <div class="tblock">Репрезентация <b>последней позиции</b> → скалярное произведение со всеми item-эмбеддингами → скор по каждому треку</div>
+    </div>
+    <p class="muted" style="font-size:13px">Главная идея self-attention: модель сама взвешивает, какие прошлые прослушивания важны для предсказания следующего. Causal-маска не даёт «подглядывать» в будущее.</p>
+
+    <h3>Как учится (loss)</h3>
+    <p>Для каждой позиции: правильный следующий трек (позитив) + 1 случайный негатив. Бинарная кросс-энтропия — позитив тянем к 1, негатив к 0:</p>
+    <div class="formula label"><span class="lead">BCE, n_neg = 1</span><span class="kd" data-tex="L = -\sum \left[\,\log \sigma(s_{\text{pos}}) + \log\big(1 - \sigma(s_{\text{neg}})\big)\,\right]"></span></div>
+
+    <h3>На нашем примере: один проход за Аню</h3>
+    <p>Прогоним оба шага на нашем госте. История Ани — <code>[t₃, t₇, t₁]</code> (что она слушала до сих пор).</p>
+
+    <h4 style="font-size:13.5px;margin:14px 0 4px">① Как считаются веса (self-attention)</h4>
+    <p style="margin:6px 0">Последняя позиция сравнивает свой запрос с каждым прошлым треком (<span class="ki" data-tex="Q\cdot K^{\top}"></span>) и через softmax получает веса <span class="ki" data-tex="\beta_j"></span> — сколько внимания уделить каждому прослушиванию:</p>
+    <table class="tbl" style="max-width:420px">
+      <tr><th class="lbl"></th><th>t₃</th><th>t₇</th><th>t₁</th></tr>
+      <tr><td class="lbl">вес внимания β<sub>j</sub></td>
+        <td style="background:hsl(160,55%,88%)">0.20</td>
+        <td style="background:hsl(160,55%,75%)">0.50</td>
+        <td style="background:hsl(160,55%,83%)">0.30</td></tr>
+    </table>
+    <p style="margin:6px 0">Сильнее всего учитывается <code>t₇</code>. Репрезентация последней позиции <span class="ki" data-tex="h"></span> — взвешенная сумма эмбеддингов; скалярное произведение <span class="ki" data-tex="h"></span> со всеми item-эмбеддингами даёт скор по каждому кандидату:</p>
+    <div class="formula"><span class="kd" data-tex="h = 0.20\,e_{t_3} + 0.50\,e_{t_7} + 0.30\,e_{t_1}, \qquad s_{u,i} = h^{\top} e_i"></span></div>
+    <table class="tbl" style="max-width:420px">
+      <tr><th class="lbl">скор s<sub>Аня,i</sub></th><th>A</th><th>B</th><th>C</th><th>D</th></tr>
+      <tr><td class="lbl">выход SASRec</td><td><b>0.90</b></td><td>0.10</td><td>0.40</td><td class="zero">0.00</td></tr>
+    </table>
+    <p class="muted" style="font-size:13px;margin:6px 0">Это и есть строка Ани в таблице стадии 3 (для Бори — то же самое по его истории). Веса и числа иллюстративны.</p>
+
+    <h4 style="font-size:13.5px;margin:16px 0 4px">② Как считается лосс (BCE)</h4>
+    <p style="margin:6px 0">На позиции, где дальше Аня реально включила <code>A</code>: позитив = <code>A</code> (скор 0.90), случайный негатив = <code>B</code> (скор 0.10). BCE тянет <span class="ki" data-tex="\sigma"></span> позитива к 1, негатива — к 0:</p>
+    <div class="formula"><span class="kd" data-tex="L = -\big[\,\log\sigma(0.90) + \log\big(1-\sigma(0.10)\big)\,\big] = -[\,\log 0.711 + \log 0.475\,] = 1.09"></span></div>
+    <p class="muted" style="font-size:13px;margin:6px 0">Градиент по <span class="ki" data-tex="L"></span> двигает веса трансформера так, чтобы скор <code>A</code> рос, а <code>B</code> — падал. Шаг повторяется по каждой позиции каждого юзера — так скорер и обучается.</p>
+
+    <h3>Результат и заморозка</h3>
+    <div class="stat">
+      <div class="cell"><b>0.0726</b><span>наш Test NDCG@10</span></div>
+      <div class="cell"><b>0.0742</b><span>baseline Яндекса</span></div>
+    </div>
+    <p>После обучения скорер <b>🔒 замораживается</b>. Мы один раз прогоняем его по всем юзерам и выгружаем top-200 треков на юзера в таблицу-кэш. <b>Дальше скорер не запускается никогда</b> — вся работа с группами идёт поверх этой таблицы (стадия 3).</p>
+  </div>
+</details>
+
+<!-- ============ 3. ТАБЛИЦА ============ -->
+<details class="stage" open>
+  <summary><span class="num">3</span><h2>Таблица скоров → матрица группы<span class="sub">стык «тяжёлый оффлайн / лёгкий онлайн»</span></h2><span class="chev">▶</span></summary>
+  <div class="body indent">
+    <p>Выгрузка замороженного SASRec — это просто таблица <code>scores.parquet</code> (top-200 на юзера, 1 834 000 строк):</p>
+    <table class="tbl" style="max-width:360px">
+      <tr><th>uid</th><th>item_idx</th><th>score</th><th>rank</th></tr>
+      <tr><td>314</td><td>10821</td><td>0.91</td><td>1</td></tr>
+      <tr><td>314</td><td>4502</td><td>0.74</td><td>2</td></tr>
+      <tr><td>…</td><td>…</td><td>…</td><td>…</td></tr>
+    </table>
+
+    <h3>Пример: те же два гостя (сквозной до конца документа)</h3>
+    <p>Берём скоры Ани и Бори из стадии 2. <b>Аня</b> любит электро-поп, <b>Боря</b> — техно. Кандидаты <span class="ki" data-tex="C_G"></span> = объединение их top-K — 4 трека. Матрица <span class="k">per_user [G × C]</span> = их персональные скоры <span class="ki" data-tex="s_{u,i}"></span> из таблицы. Где трек не входил в top-K юзера → <span class="zero">0.0</span> (контракт <code>fill=0.0</code>).</p>
+
+    <div class="controls">
+      <b>Можно править скоры</b> — стадии 4 и 5 пересчитаются вживую.
+      <button class="reset" id="resetBtn">сбросить пример</button>
+    </div>
+    <table class="tbl" id="perUserTbl"></table>
+    <p class="note">Так строится вход агрегатора: <span class="ki" data-tex="C_G = \bigcup_u \text{top-}K_u"></span>, матрица скоров, плюс аудио из стадии 1. Трек D у Ани = 0 — он не в её top-K, значит «голос» за него может дать только Боря.</p>
+  </div>
+</details>
+
+<!-- ============ 4. АГРЕГАТОРЫ ============ -->
+<details class="stage" open>
+  <summary><span class="num">4</span><h2>Агрегаторы: как из матрицы получить один топ<span class="sub">сначала методика, потом числа, потом формула</span></h2><span class="chev">▶</span></summary>
+  <div class="body indent">
+
+    <h3>Что именно мы считаем</h3>
+    <p>На входе — матрица <span class="k">per_user [G × C]</span> из стадии 3: строка на юзера, столбец на трек-кандидат. Задача агрегатора — свернуть эти строки в <b>один групповой скор на каждый трек</b> <span class="ki" data-tex="s_G(i)"></span>, по которому потом строится общий топ.</p>
+    <p>Методика у всех методов одна и та же — <b>взвешенное голосование</b>: каждому юзеру даётся вес, голоса (его персональные скоры) складываются. Различаются методы <b>только тем, как назначается вес</b> <span class="ki" data-tex="w_{u,i}"></span> — фиксированный или зависящий от трека:</p>
+    <div class="formula label"><span class="lead">общая схема всех агрегаторов</span><span class="kd" data-tex="s_G(i) = \sum_{u} w_{u,i}\, s_{u,i}"></span></div>
+
+    <h3>Два способа назначить вес</h3>
+    <div class="grid2">
+      <div class="card-mini">
+        <h4><span class="dot avg"></span>AVG — тривиальный</h4>
+        <p style="font-size:13px;margin:6px 0"><span class="what">что считает</span> — простое среднее персональных скоров по группе.</p>
+        <p style="font-size:13px;margin:6px 0"><span class="what">как назначает вес</span> — всем юзерам поровну, <span class="ki" data-tex="w_{u,i} = \tfrac{1}{G}"></span>, независимо от трека. Аудио не использует, <b>не обучается</b>.</p>
+        <div class="formula label"><span class="lead">формально</span><span class="kd" data-tex="s_G(i) = \frac{1}{G}\sum_{u} s_{u,i}"></span></div>
+      </div>
+      <div class="card-mini">
+        <h4><span class="dot aa"></span>AudioAGREE — предложенный</h4>
+        <p style="font-size:13px;margin:6px 0"><span class="what">что считает</span> — ту же взвешенную сумму, но вес юзера <b>свой для каждого трека</b>: насколько трек близок ему по аудио.</p>
+        <p style="font-size:13px;margin:6px 0"><span class="what">как назначает вес</span> — маленький MLP <span class="ki" data-tex="\varphi"></span> (2 слоя, GELU) смотрит на пару «аудиопрофиль юзера + аудио трека» и выдаёт вес; веса нормируются softmax по юзерам внутри трека. Обучается <b>только</b> <span class="ki" data-tex="\varphi"></span>, скоры и аудио фиксированы.</p>
+        <div class="formula label"><span class="lead">формально</span><span class="kd" data-tex="\alpha_{u,i} = \operatorname*{softmax}_{u}\, \varphi\!\big([\,\bar a_u\,;\,a_i\,]\big), \qquad s_G(i) = \sum_{u} \alpha_{u,i}\, s_{u,i}"></span></div>
+      </div>
+    </div>
+
+    <h3>Разбор на нашем примере</h3>
+    <p class="muted" style="font-size:13px">Веса внимания <span class="ki" data-tex="\alpha"></span> ниже — это то, что выдал <b>обученный</b> <span class="ki" data-tex="\varphi"></span> для этих 4 треков (фиксированы, иллюстративны). Видно: для трека A больший голос у Ани (он электро-поп), для B и D — у Бори (техно), для C — поровну.</p>
+    <div class="grid2">
+      <div>
+        <h4 style="font-size:13.5px;margin:6px 0"><span class="dot avg"></span> AVG: веса одинаковые</h4>
+        <table class="tbl" id="avgTbl"></table>
+      </div>
+      <div>
+        <h4 style="font-size:13.5px;margin:6px 0"><span class="dot aa"></span> AudioAGREE: веса α (заливка = вес)</h4>
+        <table class="tbl" id="aaTbl"></table>
+      </div>
+    </div>
+    <p style="font-size:13px;margin:10px 0 4px">Подставим эти числа в формулу AudioAGREE для верхнего трека (пересчитывается вживую):</p>
+    <div class="formula" id="aaSubst"></div>
+
+    <h3>Итоговые ранжировки (top-3)</h3>
+    <div class="rankrow">
+      <div class="rankcol"><h4 style="font-size:13.5px;margin:6px 0"><span class="dot avg"></span> AVG</h4><ol class="rank" id="avgRank"></ol></div>
+      <div class="rankcol"><h4 style="font-size:13.5px;margin:6px 0"><span class="dot aa"></span> AudioAGREE</h4><ol class="rank" id="aaRank"></ol></div>
+    </div>
+    <p class="note" id="rerankNote"></p>
+
+    <h3>Как учится AudioAGREE (и другие обучаемые агрегаторы)</h3>
+    <p>На <b>синтетических случайных группах</b> (размер 2–5, распределение <code>{2:.3, 3:.4, 4:.2, 5:.1}</code>). Ground-truth группы — её реальные совместные прослушивания. Loss — pairwise <b>BPR</b> (трек, который слушали, должен стоять выше случайного непрослушанного) + popularity-негативы:</p>
+    <div class="formula label"><span class="lead">BPR + popularity-негативы</span><span class="kd" data-tex="L_{\text{BPR}} = -\sum \log \sigma\big(\, s_G(i^{+}) - s_G(i^{-}) \,\big)"></span></div>
+
+    <h3>Полный список агрегаторов (итог Phase 2)</h3>
+    <table class="tbl">
+      <tr><th class="lbl">Метод</th><th>NDCG@10</th><th>Тип</th><th>Аудио</th><th>Обучается</th></tr>
+      <tr class="hi"><td class="lbl">GroupCrossAttn</td><td>0.0916</td><td>предложено</td><td>✓ cross-attn</td><td>✓</td></tr>
+      <tr class="hi"><td class="lbl">AudioAGREE</td><td>0.0901</td><td>предложено</td><td>✓</td><td>✓ (φ)</td></tr>
+      <tr><td class="lbl">MP (Most Pleasure)</td><td>0.0828</td><td>тривиальный</td><td>—</td><td>—</td></tr>
+      <tr><td class="lbl">GroupIM</td><td>0.0811</td><td>бейзлайн (SIGIR'20)</td><td>—</td><td>✓</td></tr>
+      <tr><td class="lbl">AGREE</td><td>0.0790</td><td>бейзлайн (SIGIR'18)</td><td>ID-эмб</td><td>✓</td></tr>
+      <tr><td class="lbl">AVG</td><td>0.0695</td><td>тривиальный</td><td>—</td><td>—</td></tr>
+      <tr><td class="lbl">LM (Least Misery)</td><td>0.0312</td><td>тривиальный</td><td>—</td><td>—</td></tr>
+    </table>
+    <p class="muted" style="font-size:13px"><b>H1 подтверждена:</b> audio-aware агрегаторы &gt; ID-based &gt; тривиальные. Подробно раскрыты AVG и AudioAGREE; остальные — в коде src/aggregators/.</p>
+  </div>
+</details>
+
+<!-- ============ 5. МЕТРИКИ ============ -->
+<details class="stage" open>
+  <summary><span class="num">5</span><h2>Метрики качества<span class="sub">4 метрики из демо (в дипломе считали только NDCG)</span></h2><span class="chev">▶</span></summary>
+  <div class="body indent">
+    <p>Метрики делятся на две группы. <b>Group-level</b> — насколько хорош топ для группы в целом. <b>Per-member → aggregate</b> — насколько <i>честно</i> топ разделён между членами (канон group-rec). Все четыре считаем ниже на нашем примере.</p>
+    <div class="note">Ground-truth: личные test-listens членов. <b>Аня:</b> <code>{A}</code>, <b>Боря:</b> <code>{D}</code> (внутри C<sub>G</sub>). Union = <code>{A, D}</code>. K = 3.</div>
+
+    <div class="metricbox">
+      <h4>1. NDCG@K <span class="tag group">group-level</span></h4>
+      <p style="font-size:13.5px;margin:6px 0">Качество ранжирования. Релевантные треки (union test-listens ∩ C<sub>G</sub>) должны стоять высоко; вклад позиции <i>r</i> = <span class="ki" data-tex="1/\log_2(r+1)"></span>, нормируем на идеальный порядок. <i>Единственная метрика из текста диплома.</i></p>
+      <div class="formula"><span class="kd" data-tex="\mathrm{DCG}@K = \sum_{r} \frac{\mathrm{rel}_r}{\log_2(r+1)}, \qquad \mathrm{NDCG} = \frac{\mathrm{DCG}}{\mathrm{IDCG}}"></span></div>
+      <div class="cmp" id="m-ndcg"></div>
+    </div>
+
+    <div class="metricbox">
+      <h4>2. coverage@K <span class="tag group">group-level</span></h4>
+      <p style="font-size:13.5px;margin:6px 0">Доля членов, чей вкус «представлен» в топе: для скольких из них хотя бы один трек их личного top-K попал в рекомендованные top-K. Низкий coverage = «рекомендуем фаворита одного гостя».</p>
+      <div class="formula"><span class="kd" data-tex="\mathrm{coverage} = \frac{\big|\{\, u : \text{top-}K_u \cap \text{rec-top-}K \neq \varnothing \,\}\big|}{G}"></span></div>
+      <div class="cmp" id="m-cov"></div>
+    </div>
+
+    <div class="metricbox">
+      <h4>3. Jain's fairness index <span class="tag member">per-member</span></h4>
+      <p style="font-size:13.5px;margin:6px 0">Справедливость. Сначала NDCG@K <b>каждого члена против ЕГО личных</b> test-listens, потом индекс Джейна по этим значениям. <b>1.0</b> = всех обслужили одинаково; <b>→ 1/G</b> = всё ушло одному. Выше = честнее.</p>
+      <div class="formula"><span class="kd" data-tex="\mathrm{Jain} = \frac{\big(\sum_u x_u\big)^2}{G \sum_u x_u^2}, \qquad x_u = \mathrm{NDCG}_u"></span></div>
+      <div class="cmp" id="m-jain"></div>
+    </div>
+
+    <div class="metricbox">
+      <h4>4. disagreement <span class="tag member">per-member</span></h4>
+      <p style="font-size:13.5px;margin:6px 0">Разброс удовлетворённости — стандартное отклонение тех же per-member NDCG. Ниже = ровнее обслужили группу.</p>
+      <div class="formula"><span class="kd" data-tex="\mathrm{disagreement} = \operatorname*{std}_{u}\big(\mathrm{NDCG}_u\big)"></span></div>
+      <div class="cmp" id="m-dis"></div>
+    </div>
+
+    <div class="note warn" id="metricStory"></div>
+    <p class="muted" style="font-size:13px">В тексте ВКР считали только NDCG@10/20. Coverage / Jain / Disagreement добавлены в демо как задел (Jain/Disagreement — future work из CLAUDE.md): один и тот же топ может иметь высокий NDCG, но низкий Jain — «в среднем хорошо, но один член голодает».</p>
+  </div>
+</details>
+
+</div>
+
+<script src="katex/katex.min.js"></script>
+<script>
+// ---------- KaTeX: рендер всех формул/переменных ----------
+function renderMath(root) {
+  (root || document).querySelectorAll('[data-tex]').forEach(el => {
+    katex.render(el.dataset.tex, el, {
+      throwOnError: false,
+      displayMode: el.classList.contains('kd'),
+    });
+  });
+}
+
+// ---------- сквозной пример ----------
+const TRACKS = [
+  { id: "A", name: "Midnight City",  genre: "электро-поп" },
+  { id: "B", name: "Strobe",         genre: "техно" },
+  { id: "C", name: "Teardrop",       genre: "трип-хоп" },
+  { id: "D", name: "Opus",           genre: "техно" },
+];
+const USERS = ["Аня", "Боря"];
+const K = 3;
+
+// per-user скоры из кэша (∉ top-K → 0). Дефолт = сброс.
+const DEFAULT = {
+  "Аня":  { A: 0.9, B: 0.1, C: 0.4, D: 0.0 },
+  "Боря": { A: 0.2, B: 0.8, C: 0.4, D: 0.5 },
+};
+// веса внимания φ (фиксированы — «что выдал обученный MLP»), нормированы по юзерам внутри трека
+const ALPHA = {
+  A: { "Аня": 0.7, "Боря": 0.3 },
+  B: { "Аня": 0.3, "Боря": 0.7 },
+  C: { "Аня": 0.5, "Боря": 0.5 },
+  D: { "Аня": 0.1, "Боря": 0.9 },
+};
+// ground-truth (test-listens внутри C_G)
+const REL = { "Аня": ["A"], "Боря": ["D"] };
+
+let perUser = JSON.parse(JSON.stringify(DEFAULT));
+
+// ---------- утилиты ----------
+const fmt = (x) => (Math.round(x * 1000) / 1000).toString();
+const f2 = (x) => x.toFixed(2);
+
+function avgScores() {
+  return TRACKS.map(t => {
+    const s = USERS.reduce((a, u) => a + perUser[u][t.id], 0) / USERS.length;
+    return { id: t.id, score: s };
+  });
+}
+function aaScores() {
+  return TRACKS.map(t => {
+    const s = USERS.reduce((a, u) => a + ALPHA[t.id][u] * perUser[u][t.id], 0);
+    return { id: t.id, score: s };
+  });
+}
+function ranked(scores) {
+  return [...scores].sort((a, b) => b.score - a.score);
+}
+function topKids(scores, k) {
+  return ranked(scores).slice(0, k).map(s => s.id);
+}
+// личный top-K юзера по его скорам (ненулевые, по убыванию)
+function memberTopK(u, k) {
+  return TRACKS.map(t => ({ id: t.id, s: perUser[u][t.id] }))
+    .filter(x => x.s > 0).sort((a, b) => b.s - a.s).slice(0, k).map(x => x.id);
+}
+function ndcg(rankedIds, relSet, k) {
+  let dcg = 0;
+  rankedIds.slice(0, k).forEach((id, idx) => {
+    if (relSet.has(id)) dcg += 1 / Math.log2(idx + 2);
+  });
+  const nrel = Math.min(relSet.size, k);
+  let idcg = 0;
+  for (let r = 0; r < nrel; r++) idcg += 1 / Math.log2(r + 2);
+  return idcg > 0 ? dcg / idcg : 0;
+}
+function jain(xs) {
+  const s = xs.reduce((a, b) => a + b, 0);
+  const s2 = xs.reduce((a, b) => a + b * b, 0);
+  return s2 <= 0 ? 1.0 : (s * s) / (xs.length * s2);
+}
+function std(xs) {
+  if (xs.length < 2) return 0;
+  const m = xs.reduce((a, b) => a + b, 0) / xs.length;
+  return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length);
+}
+
+// ---------- набор метрик для метода ----------
+function metricsFor(scores) {
+  const rk = ranked(scores).map(s => s.id);
+  const recTopK = new Set(rk.slice(0, K));
+  // union rel
+  const unionRel = new Set([].concat(...USERS.map(u => REL[u])));
+  const ndcgG = ndcg(rk, unionRel, K);
+  // coverage
+  let rep = 0;
+  USERS.forEach(u => { if (memberTopK(u, 200).some(id => recTopK.has(id))) rep++; });
+  const cov = rep / USERS.length;
+  // per-member ndcg против личных rel
+  const pm = USERS.map(u => ndcg(rk, new Set(REL[u]), K));
+  return { ndcg: ndcgG, cov, jain: jain(pm), dis: std(pm), pm };
+}
+
+// ---------- цвет заливки по весу ----------
+function shade(w, hue) { // w∈[0,1]
+  const light = 96 - w * 42;
+  return `hsl(${hue}, 55%, ${light}%)`;
+}
+
+// ---------- рендер ----------
+function renderPerUser() {
+  let h = "<tr><th class='lbl'>скор s<sub>u,i</sub></th>";
+  TRACKS.forEach(t => h += `<th>${t.id}<br><span class='muted' style='font-weight:400;font-size:11px'>${t.name}</span></th>`);
+  h += "</tr>";
+  USERS.forEach(u => {
+    h += `<tr><td class='lbl'>${u}</td>`;
+    TRACKS.forEach(t => {
+      h += `<td><input type='number' step='0.1' min='0' max='1' data-u='${u}' data-t='${t.id}' value='${perUser[u][t.id]}'></td>`;
+    });
+    h += "</tr>";
+  });
+  document.getElementById("perUserTbl").innerHTML = h;
+  document.querySelectorAll("#perUserTbl input").forEach(inp => {
+    inp.addEventListener("input", e => {
+      let v = parseFloat(e.target.value);
+      if (isNaN(v)) v = 0;
+      perUser[e.target.dataset.u][e.target.dataset.t] = v;
+      renderAll();
+    });
+  });
+}
+
+function renderMethodTable(elId, weightFn, hue, scores) {
+  let h = "<tr><th class='lbl'></th>";
+  TRACKS.forEach(t => h += `<th>${t.id}</th>`);
+  h += "</tr>";
+  USERS.forEach(u => {
+    h += `<tr><td class='lbl'>${u}</td>`;
+    TRACKS.forEach(t => {
+      const w = weightFn(u, t.id);
+      h += `<td style='background:${shade(w, hue)}'>${f2(w)}</td>`;
+    });
+    h += "</tr>";
+  });
+  h += "<tr><td class='lbl'>s<sub>G</sub>(i)</td>";
+  TRACKS.forEach(t => {
+    const sc = scores.find(s => s.id === t.id).score;
+    h += `<td><b>${fmt(sc)}</b></td>`;
+  });
+  h += "</tr>";
+  document.getElementById(elId).innerHTML = h;
+}
+
+// живая подстановка чисел в формулу AudioAGREE для верхнего трека
+function renderSubst(aaS) {
+  const top = ranked(aaS)[0];
+  const id = top.id;
+  const terms = USERS.map(u => `${f2(ALPHA[id][u])}\\cdot ${f2(perUser[u][id])}`).join(" + ");
+  const tex = `s_G(\\mathrm{${id}}) = ${terms} = ${fmt(top.score)}`;
+  katex.render(tex, document.getElementById("aaSubst"), { throwOnError: false, displayMode: true });
+}
+
+function renderRank(elId, scores, otherTopK) {
+  const rk = ranked(scores).slice(0, K);
+  const myIds = rk.map(s => s.id);
+  let h = "";
+  rk.forEach((s, idx) => {
+    const t = TRACKS.find(x => x.id === s.id);
+    const movedUp = otherTopK && otherTopK.indexOf(s.id) === -1; // есть у нас, нет у другого
+    h += `<li class='${movedUp ? "moved" : ""}'>
+      <span><b>${t.id}</b> · ${t.name} <span class='muted' style='font-size:12px'>(${t.genre})</span></span>
+      ${movedUp ? "<span class='badge'>иначе</span>" : ""}
+      <span class='sc'>${fmt(s.score)}</span></li>`;
+  });
+  document.getElementById(elId).innerHTML = h;
+  return myIds;
+}
+
+function cmpLine(elId, avgVal, aaVal, betterHigh, extra) {
+  const aBetter = betterHigh ? aaVal >= avgVal : aaVal <= avgVal;
+  document.getElementById(elId).innerHTML =
+    `AVG = <span class='avgv'>${fmt(avgVal)}</span> &nbsp;→&nbsp; AudioAGREE = <span class='aav'>${fmt(aaVal)}</span>` +
+    (extra ? ` &nbsp;<span class='muted'>${extra}</span>` : "");
+}
+
+function renderAll() {
+  const aS = avgScores(), aaS = aaScores();
+  renderMethodTable("avgTbl", () => 1 / USERS.length, 215, aS);
+  renderMethodTable("aaTbl", (u, id) => ALPHA[id][u], 160, aaS);
+  renderSubst(aaS);
+
+  const aaTop = topKids(aaS, K);
+  const avgTop = topKids(aS, K);
+  renderRank("avgRank", aS, aaTop);
+  renderRank("aaRank", aaS, avgTop);
+
+  // нота про реранкинг
+  const diff = avgTop.filter(x => aaTop.indexOf(x) === -1);
+  const note = document.getElementById("rerankNote");
+  if (diff.length === 0) {
+    note.innerHTML = "На текущих числах оба метода дают одинаковый топ-3. Поменяйте скоры выше, чтобы увидеть расхождение.";
+  } else {
+    note.innerHTML = `Топы разошлись: AVG включил <b>${avgTop.join(", ")}</b>, AudioAGREE — <b>${aaTop.join(", ")}</b>. ` +
+      `Внимание «подняло» трек, близкий по аудио меньшинству группы, не дав ему утонуть в усреднении.`;
+  }
+
+  // метрики
+  const mAvg = metricsFor(aS), mAa = metricsFor(aaS);
+  cmpLine("m-ndcg", mAvg.ndcg, mAa.ndcg, true);
+  cmpLine("m-cov", mAvg.cov, mAa.cov, true);
+  cmpLine("m-jain", mAvg.jain, mAa.jain, true,
+    `(per-member NDCG: Аня ${fmt(mAvg.pm[0])}/${fmt(mAa.pm[0])}, Боря ${fmt(mAvg.pm[1])}/${fmt(mAa.pm[1])})`);
+  cmpLine("m-dis", mAvg.dis, mAa.dis, false);
+
+  document.getElementById("metricStory").innerHTML =
+    `<b>Сюжет примера:</b> у AVG персональный NDCG Бори = ${fmt(mAvg.pm[1])} — его трек <code>D</code> выпал из топа, ` +
+    `поэтому Jain низкий (${fmt(mAvg.jain)}), один гость «голодает». AudioAGREE поднял <code>D</code> → Боря получил ${fmt(mAa.pm[1])}, ` +
+    `Jain вырос до ${fmt(mAa.jain)}, disagreement упал. Группу обслужили и лучше (NDCG ↑), и честнее.`;
+}
+
+// аудио-векторы (декоративные)
+function paintVec(elId, vals, hue) {
+  const el = document.getElementById(elId);
+  el.innerHTML = vals.map(v => `<i style='background:${shade(v, hue)}'></i>`).join("");
+}
+
+document.getElementById("resetBtn").addEventListener("click", () => {
+  perUser = JSON.parse(JSON.stringify(DEFAULT));
+  renderPerUser();
+  renderAll();
+});
+
+renderMath();          // статические формулы и переменные
+paintVec("vec-item", [0.2, 0.8, 0.5, 0.9, 0.3, 0.6, 0.1, 0.7], 160);
+paintVec("vec-user", [0.5, 0.6, 0.4, 0.7, 0.5, 0.3, 0.4, 0.6], 215);
+renderPerUser();
+renderAll();
+</script>
+</body>
+</html>
