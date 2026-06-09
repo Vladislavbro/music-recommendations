@@ -154,6 +154,58 @@
   .cmp { font-family: var(--mono); font-size: 13px; }
   .cmp .avgv { color: var(--avg); }
   .cmp .aav { color: var(--aa); font-weight: 600; }
+  /* ----- вводный блок «на пальцах» ----- */
+  .tldr { margin: 4px 0 34px; }
+  .tldr-h { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .tldr-sub { color: var(--muted); margin: 0 0 16px; max-width: 72ch; }
+  .pp {
+    background: linear-gradient(180deg, #fbfcff, #f3f6ff);
+    border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 22px;
+  }
+  .pp-people { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .pp-person { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 13px 15px; }
+  .pp-person.guess { border-color: #cfdcff; }
+  .pp-name { font-weight: 700; font-size: 14.5px; margin-bottom: 9px; }
+  .pp-cap { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; margin-bottom: 7px; }
+  .pp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pp-chip { background: var(--code); border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px; font-size: 13px; }
+  .pp-list { display: flex; flex-direction: column; gap: 7px; }
+  .pp-item { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
+  .pp-item .song { flex: none; min-width: 124px; }
+  .pp-bar { flex: 1; height: 8px; border-radius: 999px; background: var(--code); overflow: hidden; }
+  .pp-bar i { display: block; height: 100%; border-radius: 999px; }
+  .pp-score { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .pp-calc { flex: 1; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .pp-calc .t-a { color: #3b6ef0; }
+  .pp-calc .t-b { color: #2f9e7d; }
+  .pp-calc b { color: var(--ink); font-weight: 700; }
+  .pp-arrow { text-align: center; color: var(--muted); font-size: 13px; margin: 15px 0; line-height: 1.45; }
+  .pp-arrow .a { font-size: 17px; color: var(--accent); display: block; line-height: 1; margin-bottom: 3px; }
+  .pp-arrow b { color: var(--ink); }
+  .pp-text { font-size: 13.5px; color: var(--muted); line-height: 1.5; margin: 2px 2px 16px; }
+  .pp-text b { color: var(--ink); font-weight: 600; }
+  .pp-in { margin: -8px 2px 18px; padding-left: 18px; list-style: none; }
+  .pp-in li { font-size: 13.5px; color: var(--muted); line-height: 1.5; margin: 6px 0; position: relative; }
+  .pp-in li::before { content: "→"; position: absolute; left: -18px; color: var(--ink); }
+  .pp-in b { color: var(--ink); font-weight: 600; }
+  .pp-more { font-size: 12.5px; color: var(--muted); padding: 3px 0 1px; border-top: 1px dashed var(--line); margin-top: 2px; }
+
+  /* ----- легенда переменных под формулой ----- */
+  .fkey { margin: 9px 2px 4px; }
+  .fkey .cap { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); display: block; margin-bottom: 5px; }
+  .fkey ul { list-style: none; padding: 0; margin: 0; }
+  .fkey li { display: flex; align-items: baseline; gap: 10px; margin: 4px 0; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+  .fkey li .s { flex: none; min-width: 62px; text-align: right; color: var(--ink); }
+
+  /* ----- пример умножения (столбец × веса) ----- */
+  .muldemo { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin: 14px 0; background: #fcfdff; }
+  .muldemo .cap { font-size: 13.5px; font-weight: 600; margin-bottom: 4px; }
+  .pp-final { background: var(--card); border: 2px solid var(--accent); border-radius: 12px; padding: 14px 16px; }
+  .pp-for { margin-left: auto; font-size: 11.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 8px; flex: none; }
+  .pp-for.both { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .tldr-foot { color: var(--muted); font-size: 13px; margin: 14px 2px 0; }
+  @media (max-width: 760px) { .pp-people { grid-template-columns: 1fr; } }
+
   footer { color: var(--muted); font-size: 12.5px; margin-top: 40px; text-align: center; }
 </style>
 </head>
@@ -171,6 +223,73 @@
     <span><b>5</b> Метрики</span>
   </div>
 </header>
+
+<!-- ============ 0. СКВОЗНОЙ ПРИМЕР ============ -->
+<section class="tldr">
+  <h2 class="tldr-h">Как устроен весь путь — на одном примере</h2>
+  <p class="tldr-sub">Аня и Боря пришли вдвоём, нужен один плейлист на двоих. Вот что происходит с их данными по шагам.</p>
+
+  <div class="pp">
+    <div class="pp-cap">Шаг 1 · история каждого</div>
+    <div class="pp-people">
+      <div class="pp-person">
+        <div class="pp-name">Аня слушала</div>
+        <div class="pp-chips"><span class="pp-chip">поп</span><span class="pp-chip">танцы</span></div>
+      </div>
+      <div class="pp-person">
+        <div class="pp-name">Боря слушал</div>
+        <div class="pp-chips"><span class="pp-chip">рэп</span><span class="pp-chip">андеграунд</span></div>
+      </div>
+    </div>
+
+    <div class="pp-arrow"><span class="a">↓</span></div>
+    <p class="pp-text">Берём <b>до 200 последних треков</b> человека и отправляем в <b>трансформер</b>. Он смотрит, что человек слушал и как реагировал — что дослушивал, что пропускал, — и взвешивает прошлые прослушивания: какие из них важнее для предсказания следующего трека. Затем он <b>проходит по всему каталогу</b> (276 тысяч треков), каждому ставит оценку и оставляет <b>топ-200 треков, которые скорее всего понравятся именно ему</b>. Так считаем для Ани и для Бори по отдельности.</p>
+
+    <div class="pp-cap">Шаг 2 · трансформер выдаёт каждому свой топ</div>
+    <div class="pp-people">
+      <div class="pp-person guess">
+        <div class="pp-name">Топ Ани</div>
+        <div class="pp-list">
+          <div class="pp-item"><span class="song">По барам</span><span class="pp-score" style="color:#3b6ef0">9.0</span></div>
+          <div class="pp-item"><span class="song">Розовое вино</span><span class="pp-score" style="color:#3b6ef0">7.0</span></div>
+          <div class="pp-more">… и ещё 198 треков</div>
+        </div>
+      </div>
+      <div class="pp-person guess">
+        <div class="pp-name">Топ Бори</div>
+        <div class="pp-list">
+          <div class="pp-item"><span class="song">Ламбада</span><span class="pp-score" style="color:#2f9e7d">8.0</span></div>
+          <div class="pp-item"><span class="song">Дико, например</span><span class="pp-score" style="color:#2f9e7d">8.0</span></div>
+          <div class="pp-more">… и ещё 198 треков</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pp-arrow"><span class="a">↓</span></div>
+    <p class="pp-text">Дальше в <b>агрегатор (AudioAGREE)</b> отправляются:</p>
+
+    <ul class="pp-in">
+      <li><b>Оценки от трансформера</b> — топ-200 каждого человека из Шага 1</li>
+      <li><b>Вкус человека</b> — усреднённое звучание всех треков, что он слушал</li>
+      <li><b>Звучание кандидатов</b> — как звучит каждый трек из топов группы</li>
+    </ul>
+
+    <p class="pp-text">Чем ближе трек кому-то по звуку, тем весомее голос этого человека за этот трек. <b>Задача агрегатора — научиться правильно расставлять эти веса</b>: он подбирает их так, чтобы наверх итогового списка попадали треки, которые группа потом действительно слушает.</p>
+
+    <div class="pp-cap">Шаг 3 · один плейлист на двоих</div>
+    <div class="pp-final">
+      <div class="pp-list">
+        <div class="pp-item"><span class="song">1. По барам</span><span class="pp-calc"><span class="t-a">9.0×0.8</span> + <span class="t-b">2.0×0.2</span> = <b>7.6</b></span><span class="pp-for">голос Ани весомее</span></div>
+        <div class="pp-item"><span class="song">2. Розовое вино</span><span class="pp-calc"><span class="t-a">7.0×0.5</span> + <span class="t-b">7.0×0.5</span> = <b>7.0</b></span><span class="pp-for both">близок обоим</span></div>
+        <div class="pp-item"><span class="song">3. Дико, например</span><span class="pp-calc"><span class="t-a">2.0×0.2</span> + <span class="t-b">8.0×0.8</span> = <b>6.8</b></span><span class="pp-for">голос Бори весомее</span></div>
+      </div>
+    </div>
+
+    <p class="pp-text">Для каждого трека: <b>оценка × вес</b> у Ани плюс <b>оценка × вес</b> у Бори = одно число, общая оценка трека. Веса одного трека в сумме = 1 (это softmax), то есть это взвешенное среднее. Сортируем по этому числу — получаем список на двоих.</p>
+  </div>
+
+  <p class="tldr-foot">Главное: трек, который близок только одному из двоих, не теряется при простом усреднении — каждому достаётся своё. Ниже тот же путь разобран подробно: как трансформер взвешивает прослушивания и как агрегатор считает веса по звуку.</p>
+</section>
 
 <!-- ============ Словарь ============ -->
 <details class="stage" open>
@@ -236,6 +355,12 @@
     <h3>Как учится (loss)</h3>
     <p>Для каждой позиции: правильный следующий трек (позитив) + 1 случайный негатив. Бинарная кросс-энтропия — позитив тянем к 1, негатив к 0:</p>
     <div class="formula label"><span class="lead">BCE, n_neg = 1</span><span class="kd" data-tex="L = -\sum \left[\,\log \sigma(s_{\text{pos}}) + \log\big(1 - \sigma(s_{\text{neg}})\big)\,\right]"></span></div>
+    <div class="fkey"><span class="cap">где</span><ul>
+      <li><span class="s ki" data-tex="L"></span><span>— значение лосса (ошибки) на примере; обучение его минимизирует</span></li>
+      <li><span class="s ki" data-tex="s_{\text{pos}}"></span><span>— скор правильного следующего трека (позитив)</span></li>
+      <li><span class="s ki" data-tex="s_{\text{neg}}"></span><span>— скор случайного непрослушанного трека (негатив)</span></li>
+      <li><span class="s ki" data-tex="\sigma"></span><span>— сигмоида: превращает скор в вероятность 0…1</span></li>
+    </ul></div>
 
     <h3>На нашем примере: один проход за Аню</h3>
     <p>Прогоним оба шага на нашем госте. История Ани — <code>[t₃, t₇, t₁]</code> (что она слушала до сих пор).</p>
@@ -251,6 +376,13 @@
     </table>
     <p style="margin:6px 0">Сильнее всего учитывается <code>t₇</code>. Репрезентация последней позиции <span class="ki" data-tex="h"></span> — взвешенная сумма эмбеддингов; скалярное произведение <span class="ki" data-tex="h"></span> со всеми item-эмбеддингами даёт скор по каждому кандидату:</p>
     <div class="formula"><span class="kd" data-tex="h = 0.20\,e_{t_3} + 0.50\,e_{t_7} + 0.30\,e_{t_1}, \qquad s_{u,i} = h^{\top} e_i"></span></div>
+    <div class="fkey"><span class="cap">где</span><ul>
+      <li><span class="s ki" data-tex="h"></span><span>— репрезентация последней позиции (взвешенная сумма прошлых треков)</span></li>
+      <li><span class="s ki" data-tex="\beta_j"></span><span>— веса внимания (0.20, 0.50, 0.30): сколько внимания каждому прошлому треку</span></li>
+      <li><span class="s ki" data-tex="e_{t_j}"></span><span>— эмбеддинг прошлого трека <span class="ki" data-tex="t_j"></span> из истории</span></li>
+      <li><span class="s ki" data-tex="e_i"></span><span>— эмбеддинг трека-кандидата <i>i</i></span></li>
+      <li><span class="s ki" data-tex="s_{u,i}"></span><span>— скор трека <i>i</i> для юзера <i>u</i> = скалярное произведение <span class="ki" data-tex="h^{\top} e_i"></span></span></li>
+    </ul></div>
     <table class="tbl" style="max-width:420px">
       <tr><th class="lbl">скор s<sub>Аня,i</sub></th><th>A</th><th>B</th><th>C</th><th>D</th></tr>
       <tr><td class="lbl">выход SASRec</td><td><b>0.90</b></td><td>0.10</td><td>0.40</td><td class="zero">0.00</td></tr>
@@ -260,6 +392,11 @@
     <h4 style="font-size:13.5px;margin:16px 0 4px">② Как считается лосс (BCE)</h4>
     <p style="margin:6px 0">На позиции, где дальше Аня реально включила <code>A</code>: позитив = <code>A</code> (скор 0.90), случайный негатив = <code>B</code> (скор 0.10). BCE тянет <span class="ki" data-tex="\sigma"></span> позитива к 1, негатива — к 0:</p>
     <div class="formula"><span class="kd" data-tex="L = -\big[\,\log\sigma(0.90) + \log\big(1-\sigma(0.10)\big)\,\big] = -[\,\log 0.711 + \log 0.475\,] = 1.09"></span></div>
+    <div class="fkey"><span class="cap">где (та же формула BCE с подставленными числами)</span><ul>
+      <li><span class="s ki" data-tex="0.90"></span><span>— скор позитива (трек A); <span class="ki" data-tex="\sigma(0.90)=0.711"></span></span></li>
+      <li><span class="s ki" data-tex="0.10"></span><span>— скор негатива (трек B); <span class="ki" data-tex="1-\sigma(0.10)=0.475"></span></span></li>
+      <li><span class="s ki" data-tex="L=1.09"></span><span>— итоговая ошибка на этом примере</span></li>
+    </ul></div>
     <p class="muted" style="font-size:13px;margin:6px 0">Градиент по <span class="ki" data-tex="L"></span> двигает веса трансформера так, чтобы скор <code>A</code> рос, а <code>B</code> — падал. Шаг повторяется по каждой позиции каждого юзера — так скорер и обучается.</p>
 
     <h3>Результат и заморозка</h3>
@@ -284,7 +421,7 @@
     </table>
 
     <h3>Пример: те же два гостя (сквозной до конца документа)</h3>
-    <p>Берём скоры Ани и Бори из стадии 2. <b>Аня</b> любит электро-поп, <b>Боря</b> — техно. Кандидаты <span class="ki" data-tex="C_G"></span> = объединение их top-K — 4 трека. Матрица <span class="k">per_user [G × C]</span> = их персональные скоры <span class="ki" data-tex="s_{u,i}"></span> из таблицы. Где трек не входил в top-K юзера → <span class="zero">0.0</span> (контракт <code>fill=0.0</code>).</p>
+    <p>Берём скоры Ани и Бори из стадии 2. <b>Аня</b> любит поп, <b>Боря</b> — рэп. Кандидаты <span class="ki" data-tex="C_G"></span> = объединение их top-K — 4 трека. Матрица <span class="k">per_user [G × C]</span> = их персональные скоры <span class="ki" data-tex="s_{u,i}"></span> из таблицы. Где трек не входил в top-K юзера → <span class="zero">0.0</span> (контракт <code>fill=0.0</code>).</p>
 
     <div class="controls">
       <b>Можно править скоры</b> — стадии 4 и 5 пересчитаются вживую.
@@ -304,6 +441,25 @@
     <p>На входе — матрица <span class="k">per_user [G × C]</span> из стадии 3: строка на юзера, столбец на трек-кандидат. Задача агрегатора — свернуть эти строки в <b>один групповой скор на каждый трек</b> <span class="ki" data-tex="s_G(i)"></span>, по которому потом строится общий топ.</p>
     <p>Методика у всех методов одна и та же — <b>взвешенное голосование</b>: каждому юзеру даётся вес, голоса (его персональные скоры) складываются. Различаются методы <b>только тем, как назначается вес</b> <span class="ki" data-tex="w_{u,i}"></span> — фиксированный или зависящий от трека:</p>
     <div class="formula label"><span class="lead">общая схема всех агрегаторов</span><span class="kd" data-tex="s_G(i) = \sum_{u} w_{u,i}\, s_{u,i}"></span></div>
+    <div class="fkey"><span class="cap">где</span><ul>
+      <li><span class="s ki" data-tex="s_G(i)"></span><span>— итоговый групповой скор трека <i>i</i></span></li>
+      <li><span class="s ki" data-tex="\textstyle\sum_{u}"></span><span>— сумма по всем членам группы <i>u</i> (Аня, Боря, …)</span></li>
+      <li><span class="s ki" data-tex="w_{u,i}"></span><span>— вес голоса человека <i>u</i> на треке <i>i</i> (насколько метод «доверяет» этому голосу)</span></li>
+      <li><span class="s ki" data-tex="s_{u,i}"></span><span>— личный скор трека <i>i</i> для человека <i>u</i> (клетка матрицы из трансформера)</span></li>
+    </ul></div>
+
+    <div class="muldemo">
+      <div class="cap">Пример: групповой скор трека A — «столбец × веса»</div>
+      <p style="font-size:13px;margin:6px 0">Берём <b>столбец трека A</b> из матрицы стадии 3 (личные скоры всех членов за A) и умножаем каждый скор на вес этого человека, потом складываем сверху вниз:</p>
+      <table class="tbl" style="max-width:500px">
+        <tr><th class="lbl">трек A</th><th>личный скор <span class="ki" data-tex="s_{u,A}"></span></th><th>вес AVG</th><th>вес AudioAGREE <span class="ki" data-tex="\alpha_{u,A}"></span></th></tr>
+        <tr><td class="lbl">Аня</td><td>0.90</td><td>0.50</td><td>0.70</td></tr>
+        <tr><td class="lbl">Боря</td><td>0.20</td><td>0.50</td><td>0.30</td></tr>
+      </table>
+      <div class="formula label" style="margin-top:10px"><span class="lead">AVG — веса равные</span><span class="kd" data-tex="s_G(\mathrm{A}) = 0.50\cdot 0.90 + 0.50\cdot 0.20 = 0.55"></span></div>
+      <div class="formula label"><span class="lead">AudioAGREE — веса по звуку</span><span class="kd" data-tex="s_G(\mathrm{A}) = 0.70\cdot 0.90 + 0.30\cdot 0.20 = 0.69"></span></div>
+      <p class="muted" style="font-size:12px;margin:6px 0 0">Числа — при исходных скорах примера. Тот же расчёт по столбцам B, C, D даёт остальную строку групповых скоров, по которой строится топ.</p>
+    </div>
 
     <h3>Два способа назначить вес</h3>
     <div class="grid2">
@@ -312,17 +468,32 @@
         <p style="font-size:13px;margin:6px 0"><span class="what">что считает</span> — простое среднее персональных скоров по группе.</p>
         <p style="font-size:13px;margin:6px 0"><span class="what">как назначает вес</span> — всем юзерам поровну, <span class="ki" data-tex="w_{u,i} = \tfrac{1}{G}"></span>, независимо от трека. Аудио не использует, <b>не обучается</b>.</p>
         <div class="formula label"><span class="lead">формально</span><span class="kd" data-tex="s_G(i) = \frac{1}{G}\sum_{u} s_{u,i}"></span></div>
+        <div class="fkey"><span class="cap">где</span><ul>
+          <li><span class="s ki" data-tex="G"></span><span>— число людей в группе</span></li>
+          <li><span class="s ki" data-tex="\tfrac{1}{G}"></span><span>— одинаковый вес для каждого (голоса равны)</span></li>
+          <li><span class="s ki" data-tex="s_{u,i}"></span><span>— личный скор трека <i>i</i> для человека <i>u</i></span></li>
+          <li><span class="s ki" data-tex="s_G(i)"></span><span>— групповой скор = простое среднее по членам</span></li>
+        </ul></div>
       </div>
       <div class="card-mini">
         <h4><span class="dot aa"></span>AudioAGREE — предложенный</h4>
         <p style="font-size:13px;margin:6px 0"><span class="what">что считает</span> — ту же взвешенную сумму, но вес юзера <b>свой для каждого трека</b>: насколько трек близок ему по аудио.</p>
         <p style="font-size:13px;margin:6px 0"><span class="what">как назначает вес</span> — маленький MLP <span class="ki" data-tex="\varphi"></span> (2 слоя, GELU) смотрит на пару «аудиопрофиль юзера + аудио трека» и выдаёт вес; веса нормируются softmax по юзерам внутри трека. Обучается <b>только</b> <span class="ki" data-tex="\varphi"></span>, скоры и аудио фиксированы.</p>
         <div class="formula label"><span class="lead">формально</span><span class="kd" data-tex="\alpha_{u,i} = \operatorname*{softmax}_{u}\, \varphi\!\big([\,\bar a_u\,;\,a_i\,]\big), \qquad s_G(i) = \sum_{u} \alpha_{u,i}\, s_{u,i}"></span></div>
+        <div class="fkey"><span class="cap">где</span><ul>
+          <li><span class="s ki" data-tex="\bar a_u"></span><span>— аудиопрофиль человека <i>u</i> (средний звук его истории)</span></li>
+          <li><span class="s ki" data-tex="a_i"></span><span>— аудиоэмбеддинг трека <i>i</i> (как трек звучит)</span></li>
+          <li><span class="s ki" data-tex="[\,\bar a_u\,;\,a_i\,]"></span><span>— профиль человека и звук трека, склеенные в один вектор</span></li>
+          <li><span class="s ki" data-tex="\varphi"></span><span>— маленькая обучаемая сеть (MLP): выдаёт, насколько трек подходит человеку</span></li>
+          <li><span class="s ki" data-tex="\operatorname*{softmax}_{u}"></span><span>— нормирует веса по людям внутри трека (сумма по членам = 1)</span></li>
+          <li><span class="s ki" data-tex="\alpha_{u,i}"></span><span>— итоговый вес-внимание человека <i>u</i> на треке <i>i</i></span></li>
+          <li><span class="s ki" data-tex="s_G(i)"></span><span>— групповой скор: взвешенная сумма личных скоров</span></li>
+        </ul></div>
       </div>
     </div>
 
     <h3>Разбор на нашем примере</h3>
-    <p class="muted" style="font-size:13px">Веса внимания <span class="ki" data-tex="\alpha"></span> ниже — это то, что выдал <b>обученный</b> <span class="ki" data-tex="\varphi"></span> для этих 4 треков (фиксированы, иллюстративны). Видно: для трека A больший голос у Ани (он электро-поп), для B и D — у Бори (техно), для C — поровну.</p>
+    <p class="muted" style="font-size:13px">Веса внимания <span class="ki" data-tex="\alpha"></span> ниже — это то, что выдал <b>обученный</b> <span class="ki" data-tex="\varphi"></span> для этих 4 треков (фиксированы, иллюстративны). Видно: для трека A больший голос у Ани (это поп), для B и D — у Бори (рэп), для C — поровну.</p>
     <div class="grid2">
       <div>
         <h4 style="font-size:13.5px;margin:6px 0"><span class="dot avg"></span> AVG: веса одинаковые</h4>
@@ -346,6 +517,13 @@
     <h3>Как учится AudioAGREE (и другие обучаемые агрегаторы)</h3>
     <p>На <b>синтетических случайных группах</b> (размер 2–5, распределение <code>{2:.3, 3:.4, 4:.2, 5:.1}</code>). Ground-truth группы — её реальные совместные прослушивания. Loss — pairwise <b>BPR</b> (трек, который слушали, должен стоять выше случайного непрослушанного) + popularity-негативы:</p>
     <div class="formula label"><span class="lead">BPR + popularity-негативы</span><span class="kd" data-tex="L_{\text{BPR}} = -\sum \log \sigma\big(\, s_G(i^{+}) - s_G(i^{-}) \,\big)"></span></div>
+    <div class="fkey"><span class="cap">где</span><ul>
+      <li><span class="s ki" data-tex="L_{\text{BPR}}"></span><span>— лосс (ошибка) обучения агрегатора; его минимизируют</span></li>
+      <li><span class="s ki" data-tex="i^{+}"></span><span>— трек, который группа реально слушала (позитив)</span></li>
+      <li><span class="s ki" data-tex="i^{-}"></span><span>— случайный непрослушанный трек (негатив)</span></li>
+      <li><span class="s ki" data-tex="s_G(i^{+})"></span><span>— групповой скор позитива; <span class="ki" data-tex="s_G(i^{-})"></span> — негатива</span></li>
+      <li><span class="s ki" data-tex="\sigma"></span><span>— сигмоида; лосс тянет скор позитива выше негатива</span></li>
+    </ul></div>
 
     <h3>Полный список агрегаторов (итог Phase 2)</h3>
     <table class="tbl">
@@ -373,6 +551,14 @@
       <h4>1. NDCG@K <span class="tag group">group-level</span></h4>
       <p style="font-size:13.5px;margin:6px 0">Качество ранжирования. Релевантные треки (union test-listens ∩ C<sub>G</sub>) должны стоять высоко; вклад позиции <i>r</i> = <span class="ki" data-tex="1/\log_2(r+1)"></span>, нормируем на идеальный порядок. <i>Единственная метрика из текста диплома.</i></p>
       <div class="formula"><span class="kd" data-tex="\mathrm{DCG}@K = \sum_{r} \frac{\mathrm{rel}_r}{\log_2(r+1)}, \qquad \mathrm{NDCG} = \frac{\mathrm{DCG}}{\mathrm{IDCG}}"></span></div>
+      <div class="fkey"><span class="cap">где</span><ul>
+        <li><span class="s ki" data-tex="K"></span><span>— длина топа (в примере 3)</span></li>
+        <li><span class="s ki" data-tex="r"></span><span>— позиция трека в топе (1, 2, …)</span></li>
+        <li><span class="s ki" data-tex="\mathrm{rel}_r"></span><span>— релевантен ли трек на позиции <i>r</i> (1, если из ground-truth, иначе 0)</span></li>
+        <li><span class="s ki" data-tex="\log_2(r+1)"></span><span>— штраф за позицию: ниже в списке — меньше вклад</span></li>
+        <li><span class="s ki" data-tex="\mathrm{DCG}"></span><span>— накопленная польза топа; <span class="ki" data-tex="\mathrm{IDCG}"></span> — её максимум при идеальном порядке</span></li>
+        <li><span class="s ki" data-tex="\mathrm{NDCG}"></span><span>— <span class="ki" data-tex="\mathrm{DCG}/\mathrm{IDCG}"></span>, нормировано в 0…1</span></li>
+      </ul></div>
       <div class="cmp" id="m-ndcg"></div>
     </div>
 
@@ -380,6 +566,13 @@
       <h4>2. coverage@K <span class="tag group">group-level</span></h4>
       <p style="font-size:13.5px;margin:6px 0">Доля членов, чей вкус «представлен» в топе: для скольких из них хотя бы один трек их личного top-K попал в рекомендованные top-K. Низкий coverage = «рекомендуем фаворита одного гостя».</p>
       <div class="formula"><span class="kd" data-tex="\mathrm{coverage} = \frac{\big|\{\, u : \text{top-}K_u \cap \text{rec-top-}K \neq \varnothing \,\}\big|}{G}"></span></div>
+      <div class="fkey"><span class="cap">где</span><ul>
+        <li><span class="s ki" data-tex="\text{top-}K_u"></span><span>— личный топ человека <i>u</i></span></li>
+        <li><span class="s ki" data-tex="\text{rec-top-}K"></span><span>— рекомендованный групповой топ</span></li>
+        <li><span class="s ki" data-tex="\cap \neq \varnothing"></span><span>— у них есть хотя бы один общий трек (вкус человека «представлен»)</span></li>
+        <li><span class="s ki" data-tex="G"></span><span>— число людей в группе</span></li>
+        <li><span class="s ki" data-tex="\mathrm{coverage}"></span><span>— доля членов, чей вкус представлен в топе</span></li>
+      </ul></div>
       <div class="cmp" id="m-cov"></div>
     </div>
 
@@ -387,6 +580,11 @@
       <h4>3. Jain's fairness index <span class="tag member">per-member</span></h4>
       <p style="font-size:13.5px;margin:6px 0">Справедливость. Сначала NDCG@K <b>каждого члена против ЕГО личных</b> test-listens, потом индекс Джейна по этим значениям. <b>1.0</b> = всех обслужили одинаково; <b>→ 1/G</b> = всё ушло одному. Выше = честнее.</p>
       <div class="formula"><span class="kd" data-tex="\mathrm{Jain} = \frac{\big(\sum_u x_u\big)^2}{G \sum_u x_u^2}, \qquad x_u = \mathrm{NDCG}_u"></span></div>
+      <div class="fkey"><span class="cap">где</span><ul>
+        <li><span class="s ki" data-tex="x_u"></span><span>— персональный NDCG человека <i>u</i> (по ЕГО личным трекам)</span></li>
+        <li><span class="s ki" data-tex="G"></span><span>— число людей в группе</span></li>
+        <li><span class="s ki" data-tex="\mathrm{Jain}"></span><span>— индекс справедливости от <span class="ki" data-tex="1/G"></span> до 1 (1 = всех обслужили поровну)</span></li>
+      </ul></div>
       <div class="cmp" id="m-jain"></div>
     </div>
 
@@ -394,6 +592,11 @@
       <h4>4. disagreement <span class="tag member">per-member</span></h4>
       <p style="font-size:13.5px;margin:6px 0">Разброс удовлетворённости — стандартное отклонение тех же per-member NDCG. Ниже = ровнее обслужили группу.</p>
       <div class="formula"><span class="kd" data-tex="\mathrm{disagreement} = \operatorname*{std}_{u}\big(\mathrm{NDCG}_u\big)"></span></div>
+      <div class="fkey"><span class="cap">где</span><ul>
+        <li><span class="s ki" data-tex="\mathrm{NDCG}_u"></span><span>— персональный NDCG человека <i>u</i></span></li>
+        <li><span class="s ki" data-tex="\operatorname*{std}_{u}"></span><span>— стандартное отклонение по людям группы</span></li>
+        <li><span class="s ki" data-tex="\mathrm{disagreement}"></span><span>— разброс удовлетворённости (ниже = группу обслужили ровнее)</span></li>
+      </ul></div>
       <div class="cmp" id="m-dis"></div>
     </div>
 
@@ -418,10 +621,10 @@ function renderMath(root) {
 
 // ---------- сквозной пример ----------
 const TRACKS = [
-  { id: "A", name: "Midnight City",  genre: "электро-поп" },
-  { id: "B", name: "Strobe",         genre: "техно" },
-  { id: "C", name: "Teardrop",       genre: "трип-хоп" },
-  { id: "D", name: "Opus",           genre: "техно" },
+  { id: "A", name: "По барам",      genre: "поп" },
+  { id: "B", name: "Ламбада",        genre: "рэп" },
+  { id: "C", name: "Розовое вино",  genre: "поп-рэп" },
+  { id: "D", name: "Дико, например", genre: "рэп" },
 ];
 const USERS = ["Аня", "Боря"];
 const K = 3;
