@@ -201,7 +201,29 @@
   .muldemo { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin: 14px 0; background: #fcfdff; }
   .muldemo .cap { font-size: 13.5px; font-weight: 600; margin-bottom: 4px; }
   .pp-final { background: var(--card); border: 2px solid var(--accent); border-radius: 12px; padding: 14px 16px; }
-  .pp-for { margin-left: auto; font-size: 11.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 8px; flex: none; }
+  /* ----- формула-заголовок над таблицей Шага 3 ----- */
+  .pp-formula { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 7px; font-size: 13px; padding-bottom: 11px; margin-bottom: 12px; border-bottom: 1px dashed var(--line); }
+  .pp-formula .pf-lead { font-weight: 600; color: var(--ink); }
+  .pp-formula .pf-op { color: var(--muted); font-weight: 700; }
+  .pp-formula .term { padding: 1px 7px; border-radius: 6px; font-weight: 600; }
+  .pp-formula .term.a { color: #3b6ef0; background: #eaf0ff; }
+  .pp-formula .term.b { color: #1f7d62; background: #e7f4ef; }
+  .pp-formula .pf-res { font-weight: 700; color: var(--ink); }
+  .pp-formula .pf-note { flex-basis: 100%; font-size: 12px; color: var(--muted); line-height: 1.45; margin-top: 7px; }
+  .pp-formula .pf-note .n-score { color: var(--ink); font-weight: 600; }
+  /* ----- таблица Шага 3: единый grid, строки display:contents ----- */
+  .pp-table { display: grid; grid-template-columns: minmax(104px,auto) auto 1.1em auto 1.1em auto; justify-content: start; gap: 9px 16px; align-items: baseline; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  .pp-row { display: contents; }
+  .pp-head > span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  .pp-table .c-song { font-weight: 500; }
+  .pp-table .c-a { color: #3b6ef0; }
+  .pp-table .c-b { color: #1f7d62; }
+  .pp-table .c-a b, .pp-table .c-b b { font-weight: 700; }
+  .pp-table .c-op { color: var(--muted); text-align: center; }
+  .pp-table .c-sum { font-weight: 700; color: var(--ink); }
+  .pp-head .c-a, .pp-head .c-b { color: var(--muted); }
+  .pp-table .pp-for { justify-self: end; margin-left: 0; }
+  .pp-for { margin-left: auto; font-size: 11.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 8px; flex: none; white-space: nowrap; }
   .pp-for.both { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
   .tldr-foot { color: var(--muted); font-size: 13px; margin: 14px 2px 0; }
   @media (max-width: 760px) { .pp-people { grid-template-columns: 1fr; } }
@@ -278,14 +300,50 @@
 
     <div class="pp-cap">Шаг 3 · один плейлист на двоих</div>
     <div class="pp-final">
-      <div class="pp-list">
-        <div class="pp-item"><span class="song">1. По барам</span><span class="pp-calc"><span class="t-a">9.0×0.8</span> + <span class="t-b">2.0×0.2</span> = <b>7.6</b></span><span class="pp-for">голос Ани весомее</span></div>
-        <div class="pp-item"><span class="song">2. Розовое вино</span><span class="pp-calc"><span class="t-a">7.0×0.5</span> + <span class="t-b">7.0×0.5</span> = <b>7.0</b></span><span class="pp-for both">близок обоим</span></div>
-        <div class="pp-item"><span class="song">3. Дико, например</span><span class="pp-calc"><span class="t-a">2.0×0.2</span> + <span class="t-b">8.0×0.8</span> = <b>6.8</b></span><span class="pp-for">голос Бори весомее</span></div>
+      <div class="pp-formula">
+        <span class="pf-lead">Итог трека =</span>
+        <span class="term a">оценка<sub>Ани</sub> × вес<sub>Ани</sub></span>
+        <span class="pf-op">+</span>
+        <span class="term b">оценка<sub>Бори</sub> × вес<sub>Бори</sub></span>
+        <span class="pf-note"><span class="n-score">Оценка</span> — это число от трансформера из Шага 2 (насколько трек нравится человеку). <span class="n-score">Вес</span> — насколько голос человека весит за этот трек; веса одного трека в сумме = 1 (softmax), поэтому итог — взвешенное среднее.</span>
+      </div>
+      <div class="pp-table">
+        <div class="pp-row pp-head">
+          <span class="c-song">Трек</span>
+          <span class="c-a">Аня: оценка × вес</span>
+          <span class="c-op"></span>
+          <span class="c-b">Боря: оценка × вес</span>
+          <span class="c-op"></span>
+          <span class="c-sum">Итог</span>
+        </div>
+        <div class="pp-row">
+          <span class="c-song">1. По барам</span>
+          <span class="c-a"><b>9.0</b> × 0.8</span>
+          <span class="c-op">+</span>
+          <span class="c-b"><b>2.0</b> × 0.2</span>
+          <span class="c-op">=</span>
+          <span class="c-sum">7.6</span>
+        </div>
+        <div class="pp-row">
+          <span class="c-song">2. Розовое вино</span>
+          <span class="c-a"><b>7.0</b> × 0.5</span>
+          <span class="c-op">+</span>
+          <span class="c-b"><b>7.0</b> × 0.5</span>
+          <span class="c-op">=</span>
+          <span class="c-sum">7.0</span>
+        </div>
+        <div class="pp-row">
+          <span class="c-song">3. Дико, например</span>
+          <span class="c-a"><b>2.0</b> × 0.2</span>
+          <span class="c-op">+</span>
+          <span class="c-b"><b>8.0</b> × 0.8</span>
+          <span class="c-op">=</span>
+          <span class="c-sum">6.8</span>
+        </div>
       </div>
     </div>
 
-    <p class="pp-text">Для каждого трека: <b>оценка × вес</b> у Ани плюс <b>оценка × вес</b> у Бори = одно число, общая оценка трека. Веса одного трека в сумме = 1 (это softmax), то есть это взвешенное среднее. Сортируем по этому числу — получаем список на двоих.</p>
+    <p class="pp-text">Сортируем треки по колонке <b>«Итог»</b> — получаем единый список на двоих. Главное видно прямо в таблице: трек, который близок только одному (например «По барам» у Ани), всё равно набирает высокий итог за счёт её большого веса и не теряется при усреднении.</p>
   </div>
 
   <p class="tldr-foot">Главное: трек, который близок только одному из двоих, не теряется при простом усреднении — каждому достаётся своё. Ниже тот же путь разобран подробно: как трансформер взвешивает прослушивания и как агрегатор считает веса по звуку.</p>
