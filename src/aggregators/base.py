@@ -1,7 +1,7 @@
 """Abstract base class for group aggregators (Phase 2, шаг 7).
 
 Контракт `forward` — расширение CLAUDE.md §4 с обязательными масками
-(зафиксировано в PHASE_2_LOG, шаг 6):
+(зафиксировано в phase_2_log, шаг 6):
 
 ```
 group_user_ids:        LongTensor[B, G_max]                  # raw uids; pad-слот = 0
@@ -19,7 +19,7 @@ candidate_mask:        BoolTensor[B, C_max]                  # True — реал
   вклад (иначе attention-веса смещены).
 - Не полагаться на конкретные значения в pad-позициях `candidate_ids` — за маскирование
   pad-кандидатов в финальном ranking отвечает trainer (`-inf` после forward).
-- Для audio-агрегаторов — также маскировать missing-audio items (см. PHASE_2_LOG, шаг 2,
+- Для audio-агрегаторов — также маскировать missing-audio items (см. phase_2_log, шаг 2,
   контракт по `audio_valid`).
 """
 from __future__ import annotations

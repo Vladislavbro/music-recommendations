@@ -6,7 +6,7 @@
     forward(seq: [B, L])             -> hidden states [B, L, H]
     score(seq: [B, L], cand: [B, K]) -> scores [B, K]
 
-Phase-1 решения (см. PHASE_1_LOG.md):
+Phase-1 решения (см. phase_1_log.md):
 - Левый паддинг: `seq[:, -1]` всегда содержит самый свежий event.
   Поэтому `score()` берёт `hidden[:, -1, :]` без gather по длинам.
 - Item indexing: 1..n_items, паддинг = 0.

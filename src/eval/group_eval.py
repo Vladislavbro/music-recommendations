@@ -5,7 +5,7 @@ group-скорам агрегатора. Сам forward агрегатора ж�
 (шаг 6) и `notebooks/05_eval_groups.ipynb` (шаг 12); здесь — только
 data-обвязка и метрики.
 
-Контракты (см. `docs/PHASE_2_LOG.md` §«Контракты данных»):
+Контракты (см. `docs/phase_2_log.md` §«Контракты данных»):
 * `candidates = union(top-K каждого члена)`.
 * `targets = union(test-listens членов) ∩ candidates` — релевантные items, не
   попавшие в кандидатный пул, исключаются (Phase 2, шаг 5).
@@ -258,7 +258,7 @@ def evaluate_aggregator_scores(
 
 
 def topk_from_score_cache(scores_df) -> dict[int, np.ndarray]:
-    """Хелпер: из `scores.parquet` (см. PHASE_2_LOG, шаг 1) собирает `{uid: item_idx[K]}`.
+    """Хелпер: из `scores.parquet` (см. phase_2_log, шаг 1) собирает `{uid: item_idx[K]}`.
 
     Ожидаются колонки `uid`, `item_idx`, `score`, `rank`. Сортировка по rank
     не обязательна — для кандидатного пула важен только set.

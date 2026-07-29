@@ -8,7 +8,7 @@ GroupCrossAttn) тренируются поверх кэша `scores.parquet`. �
 валидация по NDCG@K через `src.eval.group_eval`.
 
 Контракт forward у агрегатора (расширение CLAUDE.md §4, документировано в
-PHASE_2_LOG):
+phase_2_log):
 
 ```
 aggregator(
@@ -23,7 +23,7 @@ aggregator(
 ) -> FloatTensor[B, C_max]
 ```
 
-Решения шага 6 (см. PHASE_2_LOG):
+Решения шага 6 (см. phase_2_log):
 - `per_user_scores` fill = 0.0 для item ∉ top-K юзера и для pad-позиций.
 - Negatives — popularity-weighted из `C_G \\ targets`, popularity^0.75 по train,
   как в Phase 1 (`compute_item_popularity`).

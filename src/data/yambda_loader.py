@@ -1,7 +1,7 @@
 """YAMBDA dataset loader (flat-multievent flavor, pandas).
 
 Phase 1 scope: only interactions. Audio embeddings (14GB) are deferred to
-Phase 2 — see CLAUDE.md и docs/PHASE_1_LOG.md.
+Phase 2 — see CLAUDE.md и docs/phase_1_log.md.
 
 Columns of the loaded interactions DataFrame (после `to_pandas()`):
     uid:                  uint32
@@ -81,7 +81,7 @@ def filter_min_popularity(
 ) -> pd.DataFrame:
     """Drop interactions with items that occur fewer than `min_count` times.
 
-    Phase-1 decision (PHASE_1_LOG.md): cuts long-tail catalog noise that
+    Phase-1 decision (phase_1_log.md): cuts long-tail catalog noise that
     embeddings cannot learn anyway. Apply BEFORE building item_id_to_idx
     so that the remap covers exactly the kept items.
     """

@@ -42,7 +42,7 @@
 
 ### Per-user скорер (Phase 1)
 
-**Plain SASRec + BCE-loss**, конфиг яндексовский: `hidden_dim=64, n_heads=2, n_layers=2, n_neg=1, mix_uniform=1.0, max_seq_len=200`. На YAMBDA-50m gBCE-loss не дала выигрыша (см. [logs/PHASE_1_LOG.md](logs/PHASE_1_LOG.md)) — используется plain BCE.
+**Plain SASRec + BCE-loss**, конфиг яндексовский: `hidden_dim=64, n_heads=2, n_layers=2, n_neg=1, mix_uniform=1.0, max_seq_len=200`. На YAMBDA-50m gBCE-loss не дала выигрыша (см. [logs/phase_1_log.md](logs/phase_1_log.md)) — используется plain BCE.
 
 | Метрика | Наш SASRec | Yandex baseline |
 |---|---:|---:|
@@ -102,7 +102,7 @@ Paired bootstrap (audio − ID, общая resample-сетка):
 
 **H1 подтверждена:** все 8 paired-пар значимы, CI не пересекают ноль; относительный выигрыш audio vs ID ≈ 12–16% по NDCG@10. AudioAGREE и GroupCrossAttn статистически неразличимы между собой — выбор конкретной аудио-архитектуры не критичен, важен сам сигнал.
 
-Сводные артефакты эксперимента: [artifacts/eval_results/](artifacts/eval_results/) (`summary.csv`, `summary_by_size.csv`, `paired.csv`, `per_sample.npz`, `summary_table.tex`); графики — [docs/figures/](docs/figures/). Полная история решений и наблюдений — в [logs/PHASE_2_LOG.md](logs/PHASE_2_LOG.md).
+Сводные артефакты эксперимента: [artifacts/eval_results/](artifacts/eval_results/) (`summary.csv`, `summary_by_size.csv`, `paired.csv`, `per_sample.npz`, `summary_table.tex`); графики — [docs/figures/](docs/figures/). Полная история решений и наблюдений — в [logs/phase_2_log.md](logs/phase_2_log.md).
 
 ### Важная оговорка интерпретации
 

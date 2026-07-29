@@ -10,7 +10,7 @@
   сортирует scores per-row и вызывает первый.
 
 Контракт Phase 2: relevant items, не попавшие в `C_G`, в `targets_mask` не
-заходят (см. PHASE_2_LOG.md, шаг 5, «Out-of-pool»). Таким образом IDCG
+заходят (см. phase_2_log.md, шаг 5, «Out-of-pool»). Таким образом IDCG
 нормирует только по достижимым релевантам.
 """
 from __future__ import annotations
