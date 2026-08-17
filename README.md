@@ -54,13 +54,13 @@
 
 | Метод | Тип | Источник | Реализация |
 |---|---|---|---|
-| AVG | необучаемый | классика | `src/eval/group_eval.py` |
-| Least Misery (LM) | необучаемый | классика | `src/eval/group_eval.py` |
-| Max Pleasure (MP) | необучаемый | классика | `src/eval/group_eval.py` |
-| AGREE (ID-based) | обучаемый | Cao et al., SIGIR'18 | [src/aggregators/agree.py](src/aggregators/agree.py) |
-| GroupIM | обучаемый | Sankar et al., SIGIR'20 | [src/aggregators/groupim.py](src/aggregators/groupim.py) |
-| **Audio-AGREE** | обучаемый | предложено в работе | [src/aggregators/audio_agree.py](src/aggregators/audio_agree.py) |
-| **Group Cross-Attention** | обучаемый | предложено в работе | [src/aggregators/group_cross_attn.py](src/aggregators/group_cross_attn.py) |
+| AVG | необучаемый | классика | `research/grouprec/eval/group_eval.py` |
+| Least Misery (LM) | необучаемый | классика | `research/grouprec/eval/group_eval.py` |
+| Max Pleasure (MP) | необучаемый | классика | `research/grouprec/eval/group_eval.py` |
+| AGREE (ID-based) | обучаемый | Cao et al., SIGIR'18 | [agree.py](research/grouprec/aggregators/agree.py) |
+| GroupIM | обучаемый | Sankar et al., SIGIR'20 | [groupim.py](research/grouprec/aggregators/groupim.py) |
+| **Audio-AGREE** | обучаемый | предложено в работе | [audio_agree.py](research/grouprec/aggregators/audio_agree.py) |
+| **Group Cross-Attention** | обучаемый | предложено в работе | [group_cross_attn.py](research/grouprec/aggregators/group_cross_attn.py) |
 
 **AlignGroup** не включён: гиперграф требует persistent-групп, а alignment-loss — совместного обучения с per-user веткой; обе предпосылки нарушаются на YAMBDA-эфемерных группах.
 
@@ -102,7 +102,7 @@ Paired bootstrap (audio − ID, общая resample-сетка):
 
 **H1 подтверждена:** все 8 paired-пар значимы, CI не пересекают ноль; относительный выигрыш audio vs ID ≈ 12–16% по NDCG@10. AudioAGREE и GroupCrossAttn статистически неразличимы между собой — выбор конкретной аудио-архитектуры не критичен, важен сам сигнал.
 
-Сводные артефакты эксперимента: [artifacts/eval_results/](artifacts/eval_results/) (`summary.csv`, `summary_by_size.csv`, `paired.csv`, `per_sample.npz`, `summary_table.tex`); графики — [docs/figures/](docs/figures/). Полная история решений и наблюдений — в [logs/phase_2_log.md](logs/phase_2_log.md).
+Сводные артефакты эксперимента: [artifacts/eval_results/](artifacts/eval_results/) (`summary.csv`, `summary_by_size.csv`, `paired.csv`, `per_sample.npz`, `summary_table.tex`); графики — [thesis/figures/](thesis/figures/). Полная история решений и наблюдений — в [logs/phase_2_log.md](logs/phase_2_log.md).
 
 ### Важная оговорка интерпретации
 
@@ -112,52 +112,52 @@ Phase 2 сравнивает **агрегационные механизмы п�
 
 ```
 music-recommendations/
-├── README.md, CLAUDE.md, requirements.txt
+├── README.md, CLAUDE.md, pyproject.toml
 │
-├── src/
-│   ├── data/                # yambda_loader, splits, group_synthesis, audio_embeddings
-│   ├── scorer/              # SASRec: архитектура, BCE/gBCE loss, train, inference
-│   ├── aggregators/         # base, agree, groupim, audio_agree, group_cross_attn
-│   ├── training/            # bpr_loss, group_trainer
-│   ├── eval/                # metrics, group_eval (вкл. AVG/LM/MP)
-│   └── utils/               # seed, caching
+├── research/                    # всё, что даёт числа для статей
+│   ├── grouprec/                # устанавливаемый пакет (uv pip install -e .)
+│   │   ├── data/                # yambda_loader, splits, group_synthesis, audio_embeddings
+│   │   ├── scorer/              # SASRec: архитектура, BCE/gBCE loss, train, inference
+│   │   ├── aggregators/         # base, agree, groupim, audio_agree, group_cross_attn
+│   │   ├── training/            # bpr_loss, group_trainer
+│   │   ├── eval/                # metrics, group_eval (вкл. AVG/LM/MP)
+│   │   └── utils/               # seed, caching
+│   ├── notebooks/               # 00_data_discovery … 07_eval_groups
+│   ├── configs/                 # конфиги ранов
+│   └── tests/                   # test_aggregators, test_training, test_eval, bench_inference
 │
-├── notebooks/
-│   ├── 00_data_discovery.ipynb
-│   ├── 01_explore_yambda.ipynb
-│   ├── 02_yandex_baseline_repro.ipynb
-│   ├── 03_train_gsasrec.ipynb
-│   ├── 04_audio_subset.ipynb
-│   ├── 05_user_audio_profiles.ipynb
-│   ├── 06_train_aggregators.ipynb
-│   └── 07_eval_groups.ipynb
+├── demo/
+│   ├── club/                    # Club-Demo «Резонанс»: FastAPI backend + фронт
+│   ├── ble_scanner/             # Android BLE-демо формирования эфемерной группы
+│   └── explainer/               # статическая страница-объяснялка пайплайна
 │
-├── tests/                   # test_aggregators, test_training, test_eval
+├── thesis/
+│   ├── text/                    # LaTeX-исходники ВКР
+│   ├── figures/                 # графики для текста
+│   └── presentation.pptx
 │
-├── artifacts/               # gitignored
-│   ├── gsasrec/             # чекпоинт скорера + item_id_to_idx.pkl
-│   ├── audio/               # embeddings.npy [n_items+1, 128] + user_profiles.npy
-│   ├── user_scores_cache/   # scores.parquet (top-K=200 per user)
-│   ├── aggregators/         # 4 чекпоинта обучаемых агрегаторов
-│   ├── groups_split.pkl     # train/val/test группы
-│   └── eval_results/        # summary.csv, paired.csv, per_sample.npz, *.tex
+├── logs/                        # журналы фаз и планы
 │
-├── docs/figures/            # графики для текста ВКР
+├── artifacts/                   # gitignored
+│   ├── gsasrec/                 # чекпоинт скорера + item_id_to_idx.pkl
+│   ├── audio/                   # embeddings.npy [n_items+1, 128] + user_profiles.npy
+│   ├── user_scores_cache/       # scores.parquet (top-K=200 per user)
+│   ├── aggregators/             # 4 чекпоинта обучаемых агрегаторов
+│   ├── groups_split.pkl         # train/val/test группы
+│   └── eval_results/            # summary.csv, paired.csv, per_sample.npz, *.tex
 │
-│
-├── Текст диплома/           # LaTeX-исходники (см. ниже)
-├── BLE_scanner_demo/        # Android-демо (см. ниже)
-└── references/              # read-only: yambda/, gSASRec-pytorch/
+└── references/                  # read-only, gitignored: yambda/, gSASRec-pytorch/
 ```
 
-**Принцип.** В `src/` — переиспользуемый код; в `notebooks/` — склейка вызовов и графики. `references/*` не импортируется в `src/` — нужные куски переписаны под наш интерфейс.
+**Принцип.** В `research/grouprec/` — переиспользуемый код (устанавливаемый пакет `grouprec`); в `research/notebooks/` — склейка вызовов и графики. `references/*` не импортируется в `grouprec` — нужные куски переписаны под наш интерфейс.
 
 ## Воспроизведение
 
 **Окружение.** Phase 2 запускалась на Google Colab с GPU **G4** (95 GB RAM) — это позволяет грузить subset аудио в память целиком; A100/40GB тоже подходит. Для smoke-тестов локально достаточно 16+ GB RAM без GPU.
 
 ```bash
-pip install -r requirements.txt
+uv venv
+uv pip install -e ".[research,demo,dev]"
 ```
 
 **Порядок ноутбуков:**
@@ -175,15 +175,15 @@ pip install -r requirements.txt
 Тесты:
 
 ```bash
-pytest tests/
+uv run pytest
 ```
 
 ## Текст диплома
 
-LaTeX-исходники работы лежат в директории `Текст диплома/`:
+LaTeX-исходники работы лежат в `thesis/text/`:
 
 ```
-Текст диплома/
+thesis/text/
 ├── main.tex                 # точка сборки
 ├── preamble.tex
 ├── title.tex
@@ -200,11 +200,11 @@ LaTeX-исходники работы лежат в директории `Тек
 Сборка (требуется TeX Live с поддержкой кириллицы — XeLaTeX или LuaLaTeX):
 
 ```bash
-cd "Текст диплома" && latexmk -xelatex main.tex
+cd thesis/text && latexmk -xelatex main.tex
 ```
 
 ## BLE Scanner Demo
 
-В директории [BLE_scanner_demo/](BLE_scanner_demo/) лежит вспомогательное Android-приложение — демонстрация того, как в продакшен-сценарии формируется эфемерная группа: посетители заведения определяются по присутствию в зоне действия BLE-маяков (танцпол, бар и т.п.), и состав группы динамически обновляется по силе сигнала. Это иллюстрация того, *откуда берётся* множество членов группы для агрегатора — сам ML-пайплайн от приложения не зависит.
+В директории [demo/ble_scanner/](demo/ble_scanner/) лежит вспомогательное Android-приложение — демонстрация того, как в продакшен-сценарии формируется эфемерная группа: посетители заведения определяются по присутствию в зоне действия BLE-маяков (танцпол, бар и т.п.), и состав группы динамически обновляется по силе сигнала. Это иллюстрация того, *откуда берётся* множество членов группы для агрегатора — сам ML-пайплайн от приложения не зависит.
 
-Подробности сборки и использования — в [BLE_scanner_demo/README.md](BLE_scanner_demo/README.md).
+Подробности сборки и использования — в [demo/ble_scanner/README.md](demo/ble_scanner/README.md).
