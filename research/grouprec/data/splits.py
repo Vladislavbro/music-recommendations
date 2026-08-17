@@ -36,19 +36,21 @@ class SplitConfig:
 
 def global_temporal_split(
     interactions: pd.DataFrame,
-    cfg: SplitConfig = SplitConfig(),  # noqa: B008 — frozen-ish конфиг, мутаций нет
+    cfg: SplitConfig | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Split flat interactions by timestamp into (train, val, test).
 
     Args:
         interactions: DataFrame with at least columns 'uid', 'item_id',
             'timestamp'. Other columns are preserved.
-        cfg: split parameters; defaults match yambda Constants.
+        cfg: split parameters; `None` → defaults, matching yambda Constants.
 
     Returns:
         (train, val, test). val/test contain only users present in train.
         If `cfg.val_size == 0`, val is empty (same schema).
     """
+    cfg = cfg if cfg is not None else SplitConfig()
+
     assert cfg.gap_size >= 0
     assert cfg.val_size >= 0
 

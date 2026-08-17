@@ -65,7 +65,7 @@ def cache_user_scores(
     max_seq_len: int,
     n_items: int,
     out_path: str | Path,
-    cfg: InferenceConfig = InferenceConfig(),  # noqa: B008 — frozen-ish конфиг, мутаций нет
+    cfg: InferenceConfig | None = None,
 ) -> Path:
     """Прогоняет модель для всех users в `sequences`, сохраняет топ-K в parquet.
 
@@ -75,8 +75,11 @@ def cache_user_scores(
         max_seq_len: длина окна, должна совпадать с тренировочной.
         n_items: размер каталога (для размерности скоринга).
         out_path: путь до .parquet.
-        cfg: параметры инференса (K, batch_size, exclude_history, device).
+        cfg: параметры инференса (K, batch_size, exclude_history, device);
+            `None` → значения по умолчанию.
     """
+    cfg = cfg if cfg is not None else InferenceConfig()
+
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
