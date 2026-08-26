@@ -1,0 +1,32 @@
+# Phase 1: per-user скорер SASRec на YAMBDA-50m + кэш топ-K.
+# Значения — те, на которых получен test NDCG@10 = 0.0726 (см. logs/phase_1_log.md).
+extends: base.yaml
+
+# grouprec.scorer.train.TrainConfig (n_items приходит из данных, не из конфига)
+train:
+  max_seq_len: 200
+  hidden_dim: 64   # конфиг яндекса, было 256
+  n_heads: 2       # конфиг яндекса, было 4
+  n_layers: 2      # конфиг яндекса, было 3
+  dropout: 0.0
+  n_neg: 1         # пары 1к1 вместо 1к512 — повтор яндексовского сетапа
+  mix_uniform: 1.0 # только uniform-негативы
+  gbce_t: 0.75     # при n_neg=1 сводится к обычному BCE
+  batch_size: 128
+  eval_batch_size: 64
+  lr: 0.001
+  weight_decay: 0.0
+  n_epochs: 60
+  early_stop_patience: 15
+  pop_smoothing: 0.75
+  eval_k: 10
+  log_every_steps: 12
+  seed: 42
+  device: cuda
+
+# grouprec.scorer.inference.InferenceConfig
+inference:
+  K: 200               # запас для Phase 2; агрегаторы режут по своим |C_G|
+  batch_size: 128
+  exclude_history: false  # музыка: историю не маскируем (см. logs/phase_1_log.md)
+  device: cuda

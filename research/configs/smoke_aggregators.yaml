@@ -1,0 +1,26 @@
+# Локальный прогон агрегаторов на M4 Pro: мало групп, 2 эпохи, CPU.
+# Пишет в artifacts/smoke/, чтобы не затирать настоящие чекпоинты и таблицы.
+# Только проверка, что пайплайн жив; числа отсюда никуда не идут.
+extends: aggregators_50m.yaml
+
+device: cpu
+
+paths:
+  aggregators: artifacts/smoke/aggregators
+  eval_results: artifacts/smoke/eval_results
+
+# Юзеров не режем: пул групп берётся из кэша скоров, а таргеты — из df.
+# Сабсэмпл юзеров разошёлся бы с пулом и все группы отвалились бы как пустые.
+groups:
+  n_train: 200
+  n_val: 50
+  n_test: 50
+
+train:
+  n_epochs: 2
+  early_stop_patience: 2
+  device: cpu
+  log_every_steps: 10
+
+eval:
+  n_boot: 100

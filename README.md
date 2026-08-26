@@ -120,11 +120,15 @@ music-recommendations/
 │   │   ├── scorer/              # SASRec: архитектура, BCE/gBCE loss, train, inference
 │   │   ├── aggregators/         # base, agree, groupim, audio_agree, group_cross_attn
 │   │   ├── training/            # bpr_loss, group_trainer
-│   │   ├── eval/                # metrics, group_eval (вкл. AVG/LM/MP)
-│   │   └── utils/               # seed, caching
-│   ├── notebooks/               # 00_data_discovery … 07_eval_groups
-│   ├── configs/                 # конфиги ранов
-│   └── tests/                   # test_aggregators, test_training, test_eval, bench_inference
+│   │   ├── eval/                # metrics, group_eval, trivial (AVG/LM/MP), bootstrap
+│   │   ├── utils/               # seed, caching, run_meta
+│   │   ├── config.py            # загрузка YAML-конфигов с extends
+│   │   └── experiment.py        # общая сборка входов для групповых ранов
+│   ├── scripts/                 # точки входа ранов: train_scorer, build_audio,
+│   │                            #   train_aggregators, eval_groups
+│   ├── notebooks/               # 00_data_discovery … 07_eval_groups (запуск + графики)
+│   ├── configs/                 # конфиги ранов + smoke-варианты
+│   └── tests/
 │
 ├── demo/
 │   ├── club/                    # Club-Demo «Резонанс»: FastAPI backend + фронт
@@ -135,6 +139,8 @@ music-recommendations/
 │   ├── text/                    # LaTeX-исходники ВКР
 │   ├── figures/                 # графики для текста
 │   └── presentation.pptx
+│
+├── docs/                        # карточка HF-датасета
 │
 ├── logs/                        # журналы фаз и планы
 │
@@ -149,7 +155,7 @@ music-recommendations/
 └── references/                  # read-only, gitignored: yambda/, gSASRec-pytorch/
 ```
 
-**Принцип.** В `research/grouprec/` — переиспользуемый код (устанавливаемый пакет `grouprec`); в `research/notebooks/` — склейка вызовов и графики. `references/*` не импортируется в `grouprec` — нужные куски переписаны под наш интерфейс.
+**Принцип.** В `research/grouprec/` — переиспользуемый код (устанавливаемый пакет `grouprec`); в `research/scripts/` — точки входа ранов, читающие YAML-конфиг; в `research/notebooks/` — запуск скриптов и графики. `references/*` не импортируется в `grouprec` — нужные куски переписаны под наш интерфейс.
 
 ## Воспроизведение
 
@@ -160,23 +166,45 @@ uv venv
 uv pip install -e ".[research,demo,dev]"
 ```
 
-**Порядок ноутбуков:**
+**Артефакты.** Чекпоинты, кэш скоров, аудио и таблицы результатов лежат на
+Hugging Face: [`Vladislavbro-500/music-recommendations`](https://huggingface.co/datasets/Vladislavbro-500/music-recommendations)
+(dataset, Apache 2.0). В git они не коммитятся; скрипты и ноутбуки тянут их в `artifacts/`
+через `hf_hub_download` идемпотентно.
 
-| Notebook | Что делает | Phase |
-|---|---|---|
-| `00_data_discovery.ipynb`, `01_explore_yambda.ipynb` | Знакомство с YAMBDA-50m, exploratory stats | 1 |
-| `02_yandex_baseline_repro.ipynb` | Воспроизведение Yandex SASRec-бейзлайна на Listen+ | 1 |
-| `03_train_gsasrec.ipynb` | Обучение plain SASRec + кэш top-K скоров | 1 |
-| `04_audio_subset.ipynb` | Subset аудиоэмбеддингов 7.7M → 276k items (~135 MB) | 2 |
-| `05_user_audio_profiles.ipynb` | Аудиопрофили пользователей $\bar a_u$ | 2 |
-| `06_train_aggregators.ipynb` | Обучение 4 групповых агрегаторов (BPR + popularity-negatives) | 2 |
-| `07_eval_groups.ipynb` | NDCG@10/20 + bootstrap CI + paired-тест + тривиальные бейзлайны | 2 |
+**Порядок ранов.** Вся логика — в скриптах, параметры — в `research/configs/*.yaml`.
+Ноутбуки только запускают скрипты и строят графики.
 
-Тесты:
+| Скрипт | Что делает | Конфиг | Ноутбук |
+|---|---|---|---|
+| `train_scorer.py` | SASRec + кэш топ-K скоров | `scorer_50m.yaml` | `03` |
+| `build_audio.py` | Subset аудиоэмбеддингов + профили пользователей | `aggregators_50m.yaml` | `04`, `05` |
+| `train_aggregators.py` | 4 групповых агрегатора (BPR + popularity-негативы) | `aggregators_50m.yaml` | `06` |
+| `eval_groups.py` | NDCG@10/20, bootstrap CI, paired-тест, тривиальные бейзлайны | `aggregators_50m.yaml` | `07` |
+
+```bash
+uv run python research/scripts/train_aggregators.py --config research/configs/aggregators_50m.yaml
+```
+
+Каждый ран пишет рядом с артефактами `config.resolved.json` (итоговый конфиг) и
+`run.json` (метрики, git-ревизия, версии библиотек).
+
+Смок локально на M4 Pro, без GPU, в `artifacts/smoke/`:
+
+```bash
+uv run python research/scripts/train_aggregators.py --config research/configs/smoke_aggregators.yaml
+```
+
+Ноутбуки `00`–`02` — разведка данных и воспроизведение Yandex-бейзлайна, скриптов
+за ними нет.
+
+Тесты и хуки:
 
 ```bash
 uv run pytest
+uv run pre-commit install
 ```
+
+`pre-commit` держит ruff и вычищает выводы ноутбуков перед коммитом.
 
 ## Текст диплома
 

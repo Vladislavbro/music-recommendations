@@ -36,7 +36,7 @@ from __future__ import annotations
 import csv
 import json
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -336,7 +336,7 @@ class GroupTrainConfig:
     weight_decay: float = 0.0
     n_neg_per_pos: int = 4
     reg_loss_weight: float = 0.0  # λ для aggregator.regularization_loss(), если есть
-    eval_k: tuple[int, ...] = (10, 20)
+    eval_k: Sequence[int] = (10, 20)  # Sequence, а не tuple: список из YAML подходит как есть
     early_stop_patience: int = 5
     seed: int = 42
     log_every_steps: int = 50

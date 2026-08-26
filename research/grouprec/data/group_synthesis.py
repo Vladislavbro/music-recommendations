@@ -8,7 +8,49 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 import numpy as np
+
+DEFAULT_SIZE_DIST = {2: 0.3, 3: 0.4, 4: 0.2, 5: 0.1}
+
+
+@dataclass
+class GroupSynthConfig:
+    """Параметры синтеза random-групп: сколько, каких размеров, с каким seed."""
+
+    seed: int = 42
+    n_train: int = 10_000
+    n_val: int = 2_000
+    n_test: int = 2_000
+    size_dist: dict[int, float] = field(default_factory=lambda: dict(DEFAULT_SIZE_DIST))
+
+    def __post_init__(self) -> None:
+        # YAML отдаёт ключи маппинга строками, если они записаны в кавычках.
+        self.size_dist = {int(k): float(v) for k, v in self.size_dist.items()}
+
+
+def synthesize_group_splits(
+    user_pool: list[int],
+    cfg: GroupSynthConfig | None = None,
+) -> dict[str, list[list[int]]]:
+    """Синтезирует train/val/test группы одним seed-деревом.
+
+    Один `cfg.seed` → один и тот же split групп для всех методов, чтобы
+    сравнение агрегаторов было честным.
+
+    Returns:
+        {"train": [...], "val": [...], "test": [...]}
+    """
+    cfg = cfg if cfg is not None else GroupSynthConfig()
+    rng = np.random.default_rng(cfg.seed)
+    counts = {"train": cfg.n_train, "val": cfg.n_val, "test": cfg.n_test}
+    return {
+        split: synthesize_random_groups(
+            user_pool, n, cfg.size_dist, seed=int(rng.integers(1 << 30))
+        )
+        for split, n in counts.items()
+    }
 
 
 def synthesize_random_groups(

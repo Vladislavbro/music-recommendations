@@ -1,0 +1,23 @@
+# Локальный прогон скорера на M4 Pro: маленький сабсет юзеров, CPU, 2 эпохи.
+# Пишет в artifacts/smoke/, чтобы не затирать настоящий чекпоинт и кэш скоров.
+# Только проверка, что пайплайн жив; числа отсюда никуда не идут.
+extends: scorer_50m.yaml
+
+device: cpu
+
+paths:
+  scorer: artifacts/smoke/gsasrec
+  scores_cache: artifacts/smoke/user_scores_cache/scores.parquet
+
+data:
+  smoke: true
+  smoke_n_users: 500
+
+train:
+  n_epochs: 2
+  early_stop_patience: 2
+  device: cpu
+
+inference:
+  K: 50
+  device: cpu

@@ -1,0 +1,27 @@
+# Общая база для всех ранов. Конкретные конфиги наследуют её через `extends`.
+# Пути — относительно корня репозитория.
+
+seed: 42
+device: cuda  # локально — через отдельный конфиг с `extends`, см. smoke_local.yaml
+
+paths:
+  artifacts: artifacts
+  scorer: artifacts/gsasrec
+  scores_cache: artifacts/user_scores_cache/scores.parquet
+  audio: artifacts/audio
+  aggregators: artifacts/aggregators
+  eval_results: artifacts/eval_results
+
+# grouprec.data.yambda_loader.DataConfig
+data:
+  flavor: "50m"
+  cache_dir: null
+  listen_threshold_pct: 50
+  min_popularity: 5
+  smoke: false
+  smoke_n_users: 500
+  smoke_seed: 42
+
+# grouprec.data.splits.SplitConfig — дефолты повторяют yambda Constants
+split:
+  drop_non_train_items: false

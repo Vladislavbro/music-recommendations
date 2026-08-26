@@ -1,0 +1,71 @@
+# Phase 2: групповые агрегаторы поверх замороженного скорера, YAMBDA-50m.
+# Значения — те, на которых получена таблица в artifacts/eval_results/summary.csv.
+extends: base.yaml
+
+# grouprec.data.group_synthesis.GroupSynthConfig
+groups:
+  seed: 42
+  n_train: 10000
+  n_val: 2000
+  n_test: 2000
+  size_dist: {2: 0.3, 3: 0.4, 4: 0.2, 5: 0.1}
+
+# grouprec.eval.group_eval.build_group_samples
+samples:
+  ground_truth: union
+  drop_empty: true
+  drop_missing_member: true
+
+# grouprec.training.group_trainer.GroupTrainConfig — общая база для всех методов
+train:
+  n_epochs: 100
+  batch_size: 64
+  eval_batch_size: 128
+  lr: 0.001
+  weight_decay: 0.0
+  n_neg_per_pos: 4
+  reg_loss_weight: 0.0
+  eval_k: [10, 20]
+  early_stop_patience: 30
+  fill_score: 0.0   # item вне топ-K члена
+  log_every_steps: 50
+  seed: 42
+  device: cuda
+
+audio:
+  d_audio: 128
+
+# grouprec.training.group_trainer.compute_pop_counts — веса negative sampling
+pop_smoothing: 0.75
+
+# scripts/eval_groups.py: bootstrap-CI и попарные сравнения audio vs id
+eval:
+  n_boot: 1000
+  boot_seed: 42
+  pairs:  # имена из models.*.name
+    - [AudioAGREE, AGREE]
+    - [AudioAGREE, GroupIM]
+    - [GroupCrossAttn, AGREE]
+    - [GroupCrossAttn, GroupIM]
+
+# Обучаемые методы: ключ — папка чекпоинта, `name` — подпись в таблицах,
+# `cls` — класс из grouprec.aggregators, `train` — точечные оверрайды.
+# num_items/uid_list подставляются из данных.
+models:
+  agree:
+    cls: IDBasedAGREE
+    name: AGREE
+    params: {d_emb: 32, d_att: 32}
+  groupim:
+    cls: GroupIM
+    name: GroupIM
+    params: {d_emb: 32, d_att: 32}
+    train: {reg_loss_weight: 0.5}  # λ_MI, середина сетки {0.1, 0.5, 1.0}
+  audio_agree:
+    cls: AudioAGREE
+    name: AudioAGREE
+    params: {d_audio: 128, d_att: 64}
+  group_cross_attn:
+    cls: GroupCrossAttention
+    name: GroupCrossAttn
+    params: {d_audio: 128, d_model: 64, n_heads: 4}

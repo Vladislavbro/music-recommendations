@@ -20,12 +20,29 @@ YAMBDA Constants used:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Literal
 
 import pandas as pd
 
 TRACK_LISTEN_THRESHOLD = 50  # mirrors yambda Constants.TRACK_LISTEN_THRESHOLD
 DEFAULT_MIN_POPULARITY = 5
+
+
+@dataclass
+class DataConfig:
+    """Параметры подготовки датасета: что грузим и как фильтруем.
+
+    Собирается из секции `data` YAML-конфига (см. `grouprec.config.build`).
+    """
+
+    flavor: Literal["50m"] = "50m"
+    cache_dir: str | None = None
+    listen_threshold_pct: int = TRACK_LISTEN_THRESHOLD
+    min_popularity: int = DEFAULT_MIN_POPULARITY
+    smoke: bool = False
+    smoke_n_users: int = 500
+    smoke_seed: int = 42
 
 
 def load_yambda(
@@ -122,3 +139,30 @@ def subsample_users(
     )
     out = df[df["uid"].isin(rng.values)]
     return out.reset_index(drop=True)
+
+
+def prepare_interactions(
+    cfg: DataConfig | None = None,
+    raw: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Загрузка + фильтры по конфигу: listens → min popularity → (smoke subsample).
+
+    Ремап item_id здесь НЕ делается: Phase 1 строит `item_id_to_idx` сам, а
+    Phase 2 переиспользует сохранённый — решает вызывающая сторона.
+
+    Args:
+        cfg: параметры подготовки; `None` → дефолты.
+        raw: уже загруженные interactions (чтобы не читать HF повторно).
+
+    Returns:
+        DataFrame с колонками uid, item_id, timestamp.
+    """
+    cfg = cfg if cfg is not None else DataConfig()
+    if raw is None:
+        raw = load_yambda(cfg.flavor, cache_dir=cfg.cache_dir)["interactions"]
+
+    df = filter_listens(raw, threshold_pct=cfg.listen_threshold_pct)
+    df = filter_min_popularity(df, min_count=cfg.min_popularity)
+    if cfg.smoke:
+        df = subsample_users(df, n_users=cfg.smoke_n_users, seed=cfg.smoke_seed)
+    return df

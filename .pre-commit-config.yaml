@@ -1,0 +1,20 @@
+# Хуки через `uv run`, не через изолированные env pre-commit: инструменты и их
+# версии уже зафиксированы в uv.lock, второй источник версий не нужен.
+repos:
+  - repo: local
+    hooks:
+      - id: nbstripout
+        name: nbstripout (выводы ноутбуков не коммитим)
+        entry: uv run nbstripout
+        language: system
+        files: \.ipynb$
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]
